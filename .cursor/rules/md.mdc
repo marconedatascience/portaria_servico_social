@@ -1,0 +1,12 @@
+---
+name: md
+description: Realiza revisão de código focando em análise direta de erros e vulnerabilidades, respostas económicas, uso de snippets curtos e aplicação de boas práticas.
+---
+# MD Code Reviewer
+
+## Passos para Revisão
+
+1. **Análise Direta**: Inspecione o código em busca de erros de sintaxe, vulnerabilidades (ex: injeção de SQL, vazamento de dados, falta de validação) e ineficiências.
+2. **Respostas Económicas**: Vá direto ao ponto. Não gere explicações extensas e desnecessárias. Aponte o erro de forma clara.
+3. **Fornecimento do Código**: Não reescreva ficheiros inteiros se a correção for apenas num bloco pequeno. Use snippets focados na alteração para economizar tokens do utilizador.
+4. **Boas Práticas**: Garanta que a sugestão siga os padrões arquiteturais limpos e mantenha a manutenibilidade.
