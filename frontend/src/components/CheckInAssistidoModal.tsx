@@ -19,6 +19,14 @@ interface CheckInAssistidoModalProps {
   leito?: string;
   pacienteId?: number;
   tipoInicial?: 'visitante' | 'acompanhante' | 'orelhinha' | 'obito';
+  onSuccess?: (dados: {
+    tipo: 'visitante' | 'acompanhante' | 'orelhinha' | 'obito';
+    nome: string;
+    documento?: string;
+    telefone?: string;
+    isProcedimento?: boolean;
+    tipoAcesso?: 'VISITANTE' | 'ORELHINHA' | 'OBITO' | 'PROCEDIMENTO';
+  }) => void;
 }
 
 export default function CheckInAssistidoModal({
@@ -27,7 +35,8 @@ export default function CheckInAssistidoModal({
   pacienteNome,
   leito,
   pacienteId,
-  tipoInicial
+  tipoInicial,
+  onSuccess
 }: CheckInAssistidoModalProps) {
   const [step, setStep] = useState(tipoInicial ? 2 : 1);
   const [tipo, setTipo] = useState<'visitante' | 'acompanhante' | 'orelhinha' | 'obito' | null>(tipoInicial || null);
@@ -61,12 +70,28 @@ export default function CheckInAssistidoModal({
     }
   };
 
+  const isNomeValido = inputValue.trim().length >= 2;
+  const isDocumentoValido = docValue.trim().length >= 3;
+  const isTelefoneValido = foneValue.trim().length >= 8;
+  const isVisitanteValido = isNomeValido && isDocumentoValido && isTelefoneValido;
+
+  // Bloqueio de Ação: Desabilite o botão de 'Check-in' de visitante (disabled={true}) a menos que Nome, RG/CPF e Telefone possuam valores válidos
+  const isCheckInDisabled =
+    isSubmitting ||
+    !pacienteId ||
+    (tipo === 'visitante' ? !isVisitanteValido : !inputValue.trim());
+
   const confirmar = async () => {
     const valor = inputValue.trim();
     setErro("");
 
     if (!pacienteId) {
       setErro("Nenhum paciente selecionado.");
+      return;
+    }
+
+    if (tipo === 'visitante' && !isVisitanteValido) {
+      setErro("Para o Check-in de visitante, Nome, RG/CPF e Telefone são obrigatórios e devem possuir valores válidos.");
       return;
     }
 
@@ -84,19 +109,64 @@ export default function CheckInAssistidoModal({
     setIsSubmitting(true);
     try {
       if (tipo === 'visitante') {
-        const res = await emitirCredencialVisitante(pacienteId, valor, docValue.trim(), foneValue.trim());
+        const res = await emitirCredencialVisitante(pacienteId, valor, docValue.trim(), foneValue.trim(), {
+          isProcedimento: false,
+          tipoAcesso: 'VISITANTE',
+        });
         setCredencialGerada(res);
+        onSuccess?.({
+          tipo: 'visitante',
+          nome: valor,
+          documento: docValue.trim() || undefined,
+          telefone: foneValue.trim() || undefined,
+          isProcedimento: false,
+          tipoAcesso: 'VISITANTE',
+        });
       } else if (tipo === 'acompanhante') {
         const res = await trocarAcompanhanteRPC(pacienteId, valor, docValue.trim(), foneValue.trim());
         setCredencialGerada(res);
-      } else {
-        // Fluxo auxiliar para orelhinha / óbito
+        onSuccess?.({
+          tipo: 'acompanhante',
+          nome: valor,
+          documento: docValue.trim() || undefined,
+          telefone: foneValue.trim() || undefined,
+        });
+      } else if (tipo === 'orelhinha') {
+        // Fluxo de procedimento clínico (Teste da Orelhinha) - Não consome cota de visitação social
         const res = await emitirCredencialVisitante(
           pacienteId,
-          tipo === 'obito' ? `Óbito: ${valor} familiar(es)` : `Orelhinha: ${valor}`,
-          docValue.trim()
+          valor,
+          docValue.trim(),
+          foneValue.trim(),
+          { isProcedimento: true, tipoAcesso: 'ORELHINHA' }
         );
         setCredencialGerada(res);
+        onSuccess?.({
+          tipo: 'orelhinha',
+          nome: valor,
+          documento: docValue.trim() || undefined,
+          telefone: foneValue.trim() || undefined,
+          isProcedimento: true,
+          tipoAcesso: 'ORELHINHA',
+        });
+      } else {
+        // Fluxo humanizado para óbito
+        const res = await emitirCredencialVisitante(
+          pacienteId,
+          `Óbito: ${valor} familiar(es)`,
+          docValue.trim(),
+          foneValue.trim(),
+          { isProcedimento: true, tipoAcesso: 'OBITO' }
+        );
+        setCredencialGerada(res);
+        onSuccess?.({
+          tipo: 'obito',
+          nome: `Óbito: ${valor} familiar(es)`,
+          documento: docValue.trim() || undefined,
+          telefone: foneValue.trim() || undefined,
+          isProcedimento: true,
+          tipoAcesso: 'OBITO',
+        });
       }
       setInputValue("");
       setDocValue("");
@@ -249,7 +319,7 @@ export default function CheckInAssistidoModal({
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
-                        Documento (CPF / RG)
+                        {tipo === 'visitante' ? 'Documento (CPF / RG) *' : 'Documento (CPF / RG)'}
                       </label>
                       <input 
                         type="text"
@@ -261,7 +331,7 @@ export default function CheckInAssistidoModal({
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
-                        Telefone de Contato (Opcional)
+                        {tipo === 'visitante' ? 'Telefone de Contato *' : 'Telefone de Contato (Opcional)'}
                       </label>
                       <input 
                         type="text"
@@ -271,6 +341,12 @@ export default function CheckInAssistidoModal({
                         className="w-full text-sm p-3 rounded-xl border border-slate-300 focus:border-primary-blue focus:ring-4 focus:ring-blue-100 outline-none transition-all shadow-2xs bg-white"
                       />
                     </div>
+                  </div>
+                )}
+
+                {tipo === 'visitante' && !isVisitanteValido && (
+                  <div className="text-[11px] text-amber-700 font-semibold bg-amber-50 p-2.5 rounded-lg border border-amber-200">
+                    O botão de Check-in permanecerá desabilitado até que Nome, RG/CPF e Telefone possuam valores preenchidos.
                   </div>
                 )}
               </div>
@@ -290,11 +366,11 @@ export default function CheckInAssistidoModal({
                   Voltar
                 </button>
                 <button 
-                  disabled={isSubmitting || !inputValue.trim() || !pacienteId}
+                  disabled={isCheckInDisabled}
                   onClick={confirmar}
-                  className="flex-[2] py-3 text-sm font-bold text-white bg-primary-green hover:bg-green-600 rounded-xl shadow-md transition-transform active:scale-95 disabled:opacity-50 cursor-pointer"
+                  className="flex-[2] py-3 text-sm font-bold text-white bg-primary-green hover:bg-green-600 rounded-xl shadow-md transition-transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                 >
-                  {isSubmitting ? "Emitindo Credencial..." : "Confirmar & Emitir QR Code"}
+                  {isSubmitting ? "Emitindo Credencial..." : tipo === 'visitante' ? "Check-in de Visitante" : "Confirmar & Emitir QR Code"}
                 </button>
               </div>
             </div>

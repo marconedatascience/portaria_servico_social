@@ -2,8 +2,8 @@ import logging
 from datetime import datetime, time, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from typing import List
-from schemas.crm_models import Paciente, PacienteCreate
+from typing import List, Optional
+from schemas.crm_models import Paciente, PacienteCreate, Visitante
 from core.security import verificar_perfil
 
 logger = logging.getLogger("auditoria.pacientes")
@@ -28,6 +28,13 @@ router = APIRouter(dependencies=[Depends(perfil_dep)])
 class NomeIn(BaseModel):
     nome: str = Field(..., min_length=2, max_length=120)
 
+class VisitanteIn(BaseModel):
+    nome: str = Field(..., min_length=2, max_length=120)
+    documento: Optional[str] = None
+    telefone: Optional[str] = None
+    is_procedimento: bool = False
+    tipo_acesso: str = "VISITANTE"
+
 # Simulação de banco de dados em memória para testarmos as rotas rapidamente
 db_pacientes = [
     Paciente(
@@ -38,6 +45,18 @@ db_pacientes = [
         municipio="São Paulo",
         acompanhante_nome="Maria da Silva",
         visitante_ativo="Carlos da Silva",
+        visitantes=[
+            Visitante(
+                id=1,
+                nome="Carlos da Silva",
+                documento="111.222.333-44",
+                telefone="(82) 99999-1111",
+                data_entrada=datetime.now(),
+                status="ATIVO",
+                isProcedimento=False,
+                tipoAcesso="VISITANTE"
+            )
+        ],
         data_internacao=datetime.now()
     ),
     Paciente(
@@ -48,6 +67,7 @@ db_pacientes = [
         municipio="Campinas",
         acompanhante_nome="Pedro Oliveira",
         visitante_ativo=None,
+        visitantes=[],
         data_internacao=datetime.now()
     )
 ]
@@ -56,6 +76,14 @@ db_pacientes = [
 def listar_pacientes():
     """Retorna a lista de pacientes internados para o Dashboard 360º."""
     return db_pacientes
+
+@router.get("/{paciente_id}", response_model=Paciente)
+def obter_paciente(paciente_id: int):
+    """Busca os dados do paciente por ID e popula o estado local no front-end após F5 (Hidratação)."""
+    for p in db_pacientes:
+        if p.id == paciente_id:
+            return p
+    raise HTTPException(status_code=404, detail="Paciente não encontrado")
 
 @router.post("/", response_model=Paciente)
 def registrar_paciente(paciente_in: PacienteCreate):
@@ -69,13 +97,32 @@ def registrar_paciente(paciente_in: PacienteCreate):
     db_pacientes.append(novo_paciente)
     return novo_paciente
 
-@router.put("/{paciente_id}/visitante", response_model=Paciente)
-def atualizar_visitante(paciente_id: int, body: NomeIn, perfil: str = Depends(perfil_dep)):
-    """Atualiza o visitante ativo para um paciente (Módulo Check-in Assistido)."""
+@router.post("/{paciente_id}/visitantes", response_model=Paciente)
+@router.post("/{paciente_id}/visitante", response_model=Paciente)
+def adicionar_visitante(paciente_id: int, body: VisitanteIn, perfil: str = Depends(perfil_dep)):
+    """Criação de visitante via POST: substitui qualquer lógica de UPDATE por INSERT/$push para adicionar ao array de visitantes."""
     for p in db_pacientes:
         if p.id == paciente_id:
-            p.visitante_ativo = body.nome
-            logger.info("visitante_atualizado paciente_id=%s perfil=%s em=%s", paciente_id, perfil, agora_brasilia().isoformat())
+            novo_id = len(p.visitantes) + 1
+            novo_vis = Visitante(
+                id=novo_id,
+                nome=body.nome,
+                documento=body.documento,
+                telefone=body.telefone,
+                data_entrada=datetime.now(),
+                status="ATIVO",
+                isProcedimento=body.is_procedimento,
+                tipoAcesso=body.tipo_acesso
+            )
+            # Persistência: INSERT / $push no array de visitantes (sem UPDATE/sobrescrita)
+            p.visitantes.append(novo_vis)
+
+            # Atualiza resumo textual apenas para visitantes sociais de quarto
+            visitantes_ativos = [v.nome for v in p.visitantes if not v.isProcedimento and v.status == "ATIVO"]
+            p.visitante_ativo = ", ".join(visitantes_ativos) if visitantes_ativos else None
+
+            logger.info("visitante_adicionado_array paciente_id=%s total_visitantes=%s perfil=%s em=%s", 
+                        paciente_id, len(p.visitantes), perfil, agora_brasilia().isoformat())
             return p
     raise HTTPException(status_code=404, detail="Paciente não encontrado")
 

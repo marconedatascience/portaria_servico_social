@@ -1,21 +1,35 @@
 import type { Session } from '@supabase/supabase-js';
 
-// Setores do sistema. O setor é gravado pela administração em app_metadata.role
-// (somente a service role consegue alterar app_metadata; o usuário não).
-export type Perfil = 'portaria' | 'servico_social' | 'fono';
-
-const PERFIS: readonly Perfil[] = ['portaria', 'servico_social', 'fono'];
+// Setores do sistema. O setor é gravado pela administração em app_metadata.role ou app_metadata.setor
+export type Perfil = 'portaria' | 'servico_social' | 'fono' | 'admin';
 
 /**
- * Lê o setor aprovado da sessão. Retorna null se a conta ainda não foi aprovada.
- * Obs.: isto controla apenas a TELA. A proteção real dos dados é o RLS do Supabase,
- * que lê o mesmo campo do token assinado (supabase_seguranca_rls.sql).
+ * Lê o setor ou permissão aprovada da sessão. Retorna null se a conta ainda não foi aprovada.
  */
 export function perfilDaSessao(session: Session | null): Perfil | null {
   const meta = (session?.user?.app_metadata ?? {}) as Record<string, unknown>;
-  const bruto = meta.role ?? meta.setor;
-  const perfil = typeof bruto === 'string' ? bruto.trim().toLowerCase() : '';
-  return (PERFIS as readonly string[]).includes(perfil) ? (perfil as Perfil) : null;
+  const userMeta = (session?.user?.user_metadata ?? {}) as Record<string, unknown>;
+
+  // 1. Verifica role de admin (acesso total administrativo)
+  const roleBruto = meta.role ?? userMeta.role;
+  if (typeof roleBruto === 'string') {
+    const r = roleBruto.trim().toLowerCase();
+    if (r === 'admin') return 'admin';
+    if (['portaria', 'servico_social', 'fono'].includes(r)) {
+      return r as Perfil;
+    }
+  }
+
+  // 2. Verifica setor específico
+  const setorBruto = meta.setor ?? userMeta.setor;
+  if (typeof setorBruto === 'string') {
+    const s = setorBruto.trim().toLowerCase();
+    if (['portaria', 'servico_social', 'fono'].includes(s)) {
+      return s as Perfil;
+    }
+  }
+
+  return null;
 }
 
 /** Página inicial de cada setor após o login. */

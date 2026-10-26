@@ -1,5 +1,5 @@
 from pydantic import BaseModel, ConfigDict, Field
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
 from enum import Enum
 
@@ -8,6 +8,16 @@ class PerfilUsuario(str, Enum):
     FONO = "fono"
     SERVICO_SOCIAL = "servico_social"
 
+class Visitante(BaseModel):
+    id: int
+    nome: str
+    documento: Optional[str] = None
+    telefone: Optional[str] = None
+    data_entrada: datetime = Field(default_factory=datetime.now)
+    status: str = "ATIVO"
+    isProcedimento: bool = False
+    tipoAcesso: str = "VISITANTE"
+
 class PacienteBase(BaseModel):
     leito: str = Field(..., max_length=30, description="Setor e Leito (ex: APT 101, UTI 05, PS 02)")
     usuario_nome: str = Field(..., min_length=2, max_length=120, description="Nome do Paciente")
@@ -15,6 +25,7 @@ class PacienteBase(BaseModel):
     municipio: Optional[str] = Field(None, max_length=80, description="Município de Origem")
     acompanhante_nome: Optional[str] = Field(None, max_length=120, description="Nome do Acompanhante Atual")
     visitante_ativo: Optional[str] = Field(None, max_length=120, description="Nome do Visitante Liberado Atualmente")
+    visitantes: List[Visitante] = Field(default_factory=list, description="Histórico relacional de visitantes ativos")
 
 class PacienteCreate(PacienteBase):
     pass

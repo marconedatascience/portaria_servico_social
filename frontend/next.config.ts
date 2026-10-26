@@ -1,10 +1,20 @@
 import type { NextConfig } from "next";
 
-// Configuração enxuta e estável.
-// Removidos: cacheComponents, partialPrefetching e o loader customizado de CSS do Turbopack,
-// que causavam um loop infinito de recompilação/reload (página recarregando a cada ~200ms).
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  // Permite conexões de desenvolvimento e HMR WebSocket a partir de qualquer IP da rede local
+  allowedDevOrigins: [
+    "localhost",
+    "localhost:3000",
+    "127.0.0.1",
+    "127.0.0.1:3000",
+    "192.168.11.159",
+    "192.168.11.159:3000",
+    "192.168.*.*",
+    "10.*.*.*",
+    "*.local",
+  ],
 };
 
 export default nextConfig;
+

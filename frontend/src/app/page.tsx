@@ -4,13 +4,18 @@ import React, { useState, useEffect } from "react";
 import CheckInAssistidoModal from "../components/CheckInAssistidoModal";
 import TabelaServicoSocial from "../components/TabelaServicoSocial";
 import AutoCompletePaciente from "../components/AutoCompletePaciente";
+import PacienteSelecionadoCard from "../components/PacienteSelecionadoCard";
 import { 
   fetchPacientes, 
   fetchRegras, 
   desocuparVisitante, 
-  confirmarAltaHospitalar, 
-  Paciente 
+  fetchPacientePorId,
+  Paciente,
+  Visitante
 } from "../services/api";
+import { useVisitasStore } from "../context/VisitasContext";
+import { useOrelhinhaStore } from "../context/OrelhinhaContext";
+import CardVisitanteNoQuarto from "../components/CardVisitanteNoQuarto";
 import { supabase } from "../lib/supabase";
 import { perfilDaSessao, rotaInicialDoPerfil } from "../lib/perfil";
 import AcessoPendente from "../components/AcessoPendente";
@@ -31,16 +36,8 @@ import {
   HeartHandshake, 
   ArrowLeftRight,
   RefreshCw,
-  AlertTriangle,
-  DoorOpen
+  AlertTriangle
 } from "lucide-react";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "../components/ui/dialog";
 
 function DashboardContent() {
   const [isModalCheckInOpen, setIsModalCheckInOpen] = useState(false);
@@ -53,12 +50,10 @@ function DashboardContent() {
   const [filtroTexto, setFiltroTexto] = useState("");
   const [filtroSetor, setFiltroSetor] = useState<string>("TODOS");
   const [abaAtiva, setAbaAtiva] = useState<"geral" | "servico_social">("geral");
-
-  // Estado para Modal de Confirmação de Alta
-  const [pacienteParaAlta, setPacienteParaAlta] = useState<Paciente | null>(null);
-  const [isConfirmandoAlta, setIsConfirmandoAlta] = useState(false);
-  const [obsAlta, setObsAlta] = useState("");
   const [mensagemSucesso, setMensagemSucesso] = useState("");
+
+  const { adicionarVisitante: adicionarVisitanteNaStore } = useVisitasStore();
+  const { adicionarConsultaOrelhinha } = useOrelhinhaStore();
 
   const queryClient = useQueryClient();
 
@@ -74,32 +69,200 @@ function DashboardContent() {
     enabled: autenticado,
   });
 
+  // Hidratação (F5): no componente principal, faz um GET /pacientes/:id ao montar a tela, garantindo que os dados não se percam no recarregamento.
+  useEffect(() => {
+    let montado = true;
+
+    const hidratarPacienteAposF5 = async () => {
+      try {
+        let idAlvo: number | null = null;
+        if (typeof window !== "undefined") {
+          const params = new URLSearchParams(window.location.search);
+          const idUrl = params.get("pacienteId") || params.get("id");
+          const idSalvo = localStorage.getItem("portaria_paciente_selecionado_id") || localStorage.getItem("paciente_selecionado_id");
+          if (idUrl) idAlvo = Number(idUrl);
+          else if (idSalvo) idAlvo = Number(idSalvo);
+        }
+
+        // Padrão inicial caso não haja ID explícito salvo
+        if (!idAlvo) {
+          idAlvo = 1;
+        }
+
+        // Requisição GET /pacientes/:id para hidratação
+        const dadosCompletos = await fetchPacientePorId(idAlvo);
+        if (montado && dadosCompletos) {
+          setPacienteFocado(dadosCompletos);
+          if (typeof window !== "undefined") {
+            localStorage.setItem("portaria_paciente_selecionado_id", String(dadosCompletos.id));
+          }
+        }
+      } catch (err) {
+        console.error("Erro ao hidratar paciente via GET /pacientes/:id após F5:", err);
+      }
+    };
+
+    hidratarPacienteAposF5();
+
+    return () => {
+      montado = false;
+    };
+  }, []);
+
+  // 1. Sincronização via useEffect: atualiza pacienteFocado quando a lista de pacientes for refetchada ou alterada
+  useEffect(() => {
+    if (pacienteFocado) {
+      const atualizado = pacientes.find(p => p.id === pacienteFocado.id);
+      if (atualizado) {
+        setPacienteFocado((prev) => {
+          if (!prev) return atualizado;
+          return {
+            ...prev,
+            ...atualizado,
+            visitantes: (atualizado.visitantes && atualizado.visitantes.length > 0)
+              ? atualizado.visitantes
+              : prev.visitantes,
+            acompanhante: atualizado.acompanhante || prev.acompanhante,
+          };
+        });
+      }
+    }
+  }, [pacientes]);
+
+  // 2. Callback de sucesso da mutation/troca de acompanhante ou visitante
+  const handleAcessoSucesso = (dados: {
+    tipo: 'visitante' | 'acompanhante' | 'orelhinha' | 'obito';
+    nome: string;
+    documento?: string;
+    telefone?: string;
+  }) => {
+    setPacienteFocado((prev) => {
+      if (!prev) return null;
+      if (dados.tipo === 'acompanhante') {
+        return {
+          ...prev,
+          acompanhante_nome: dados.nome,
+          acompanhante_documento: dados.documento || null,
+          acompanhante_telefone: dados.telefone || null,
+          acompanhante: {
+            nome: dados.nome,
+            documento: dados.documento || null,
+            telefone: dados.telefone || null,
+          },
+        };
+      } else if (dados.tipo === 'visitante') {
+        const novoVis: Visitante = {
+          id: Date.now() + Math.floor(Math.random() * 1000),
+          nome: dados.nome,
+          documento: dados.documento || null,
+          telefone: dados.telefone || null,
+          data_entrada: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+          status: 'ATIVO',
+          isProcedimento: false,
+          tipoAcesso: 'VISITANTE',
+        };
+        const listaAnterior: Visitante[] = Array.isArray(prev.visitantes)
+          ? prev.visitantes
+          : (prev.visitante ? [prev.visitante] : (prev.visitante_ativo ? [{ id: prev.id * 1000 + 1, nome: prev.visitante_ativo, documento: prev.visitante_documento, telefone: prev.visitante_telefone }] : []));
+        const novosVisitantes = [...listaAnterior, novoVis];
+        const visitantesSociais = novosVisitantes.filter(v => !v.isProcedimento && v.tipoAcesso !== 'ORELHINHA');
+        const novasCotas = (prev.cotas_usadas ?? 0) + 1;
+
+        // Atualiza a store de Visitas
+        adicionarVisitanteNaStore(prev.id, novoVis);
+
+        return {
+          ...prev,
+          visitante_ativo: visitantesSociais.map(v => v.nome).join(', '),
+          visitante_documento: dados.documento || null,
+          visitante_telefone: dados.telefone || null,
+          visitante: novoVis,
+          visitantes: novosVisitantes,
+          cotas_usadas: novasCotas,
+          placar: `Visitantes: ${novasCotas}/${prev.cota_maxima ?? 2}`,
+        };
+      } else if (dados.tipo === 'orelhinha') {
+        // Procedimento clínico não consome cota diária de visitas sociais e é gerenciado pela store da Orelhinha
+        const novoProc: Visitante = {
+          id: Date.now() + Math.floor(Math.random() * 1000),
+          nome: dados.nome,
+          documento: dados.documento || null,
+          telefone: dados.telefone || null,
+          data_entrada: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+          status: 'ATIVO',
+          isProcedimento: true,
+          tipoAcesso: 'ORELHINHA',
+        };
+
+        // Dispara ação isolada na store da Orelhinha (NÃO incrementa contador de visitantes)
+        adicionarConsultaOrelhinha({
+          paciente: prev.usuario_nome,
+          leito: prev.leito,
+          responsavel: dados.nome,
+          data: new Date().toISOString().split("T")[0],
+          horario: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+          status: "Agendado",
+          presenca: "Presente",
+        });
+
+        const listaProcedimentos: Visitante[] = Array.isArray(prev.procedimentos_ativos) ? prev.procedimentos_ativos : [];
+
+        // Retorna paciente sem alterar cotas_usadas ou placar de visitas
+        return {
+          ...prev,
+          procedimentos_ativos: [...listaProcedimentos, novoProc],
+        };
+      }
+      return prev;
+    });
+
+    queryClient.invalidateQueries({ queryKey: ["pacientes"] });
+  };
+
   // Proteção de rota por perfil JWT
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) {
+    let montado = true;
+
+    const verificarAcesso = async () => {
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        if (error || !session) {
+          if (montado) window.location.replace("/login");
+          return;
+        }
+
+        if (!montado) return;
+        setUsuarioEmail(session.user.email ?? "");
+
+        const perfil = perfilDaSessao(session);
+        setUsuarioRole(perfil);
+        if (!perfil) {
+          setAguardandoAprovacao(true);
+          return;
+        }
+        if (rotaInicialDoPerfil(perfil) !== "/") {
+          window.location.replace(rotaInicialDoPerfil(perfil));
+          return;
+        }
+        setAutenticado(true);
+      } catch (err) {
+        console.error("Erro na verificação de sessão:", err);
+        if (montado) window.location.replace("/login");
+      }
+    };
+
+    verificarAcesso();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "SIGNED_OUT") {
         window.location.replace("/login");
-        return;
       }
-      setUsuarioEmail(session.user.email ?? "");
-
-      const perfil = perfilDaSessao(session);
-      setUsuarioRole(perfil);
-      if (!perfil) {
-        setAguardandoAprovacao(true);
-        return;
-      }
-      if (rotaInicialDoPerfil(perfil) !== "/") {
-        window.location.replace(rotaInicialDoPerfil(perfil));
-        return;
-      }
-      setAutenticado(true);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "SIGNED_OUT") window.location.replace("/login");
-    });
-    return () => subscription.unsubscribe();
+    return () => {
+      montado = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   const sair = async () => {
@@ -113,31 +276,33 @@ function DashboardContent() {
     setIsModalCheckInOpen(true);
   };
 
-  const handleConfirmarAlta = async () => {
-    if (!pacienteParaAlta) return;
-    setIsConfirmandoAlta(true);
-    try {
-      const res = await confirmarAltaHospitalar(pacienteParaAlta.id, obsAlta.trim());
-      setMensagemSucesso(`Alta confirmada com sucesso! Leito ${res.leito_liberado || pacienteParaAlta.leito} liberado.`);
-      setPacienteParaAlta(null);
-      setObsAlta("");
-      if (pacienteFocado?.id === pacienteParaAlta.id) {
-        setPacienteFocado(null);
-      }
-      queryClient.invalidateQueries({ queryKey: ["pacientes"] });
-      setTimeout(() => setMensagemSucesso(""), 6000);
-    } catch (e) {
-      window.alert(e instanceof Error ? e.message : "Erro ao confirmar alta.");
-    } finally {
-      setIsConfirmandoAlta(false);
-    }
-  };
-
-  const handleSaidaVisitante = async (pacienteId: number) => {
-    if (confirm("Deseja registrar a saída do visitante ativo deste leito?")) {
+  const handleSaidaVisitante = async (pacienteId: number, visitanteId?: number) => {
+    if (confirm("Deseja registrar a saída do visitante deste leito?")) {
       try {
-        await desocuparVisitante(pacienteId);
+        await desocuparVisitante(pacienteId, visitanteId);
         setMensagemSucesso("Saída do visitante registrada com sucesso.");
+        setPacienteFocado((prev) => {
+          if (!prev || prev.id !== pacienteId) return prev;
+          const listaAtual: Visitante[] = Array.isArray(prev.visitantes)
+            ? prev.visitantes
+            : (prev.visitante ? [prev.visitante] : []);
+          const filtrados = visitanteId !== undefined
+            ? listaAtual.filter((v) => v.id !== visitanteId)
+            : [];
+          const novosProcedimentos = (prev.procedimentos_ativos || []).filter(v => v.id !== visitanteId);
+          const visitantesSociais = filtrados.filter(v => !v.isProcedimento && v.tipoAcesso !== 'ORELHINHA');
+          const ultimo = visitantesSociais.length > 0 ? visitantesSociais[visitantesSociais.length - 1] : null;
+
+          return {
+            ...prev,
+            visitantes: filtrados,
+            procedimentos_ativos: novosProcedimentos,
+            visitante: ultimo,
+            visitante_ativo: visitantesSociais.length > 0 ? visitantesSociais.map(v => v.nome).join(', ') : null,
+            visitante_documento: ultimo?.documento || null,
+            visitante_telefone: ultimo?.telefone || null,
+          };
+        });
         queryClient.invalidateQueries({ queryKey: ["pacientes"] });
         setTimeout(() => setMensagemSucesso(""), 4000);
       } catch (e) {
@@ -187,8 +352,24 @@ function DashboardContent() {
 
   if (!autenticado) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50 text-gray-500 font-medium">
-        Verificando credenciais e acessos...
+      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 text-gray-600 gap-4 p-6">
+        <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+        <p className="font-semibold text-lg text-slate-700">Verificando credenciais e acessos...</p>
+        <p className="text-sm text-gray-500">Redirecionando para o portal de acesso seguro...</p>
+        <div className="mt-4 flex flex-wrap justify-center gap-3">
+          <a
+            href="/login"
+            className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow transition-all text-sm"
+          >
+            Acessar Tela de Login
+          </a>
+          <a
+            href="/dashboard/portaria"
+            className="px-5 py-2.5 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 font-bold rounded-xl shadow-sm transition-all text-sm"
+          >
+            Painel da Portaria
+          </a>
+        </div>
       </div>
     );
   }
@@ -207,76 +388,8 @@ function DashboardContent() {
         pacienteNome={pacienteFocado?.usuario_nome}
         leito={pacienteFocado?.leito}
         tipoInicial={modalTipoInicial}
+        onSuccess={handleAcessoSucesso}
       />
-
-      {/* Modal de Confirmação de Alta Hospitalar */}
-      <Dialog open={!!pacienteParaAlta} onOpenChange={(open) => !open && setPacienteParaAlta(null)}>
-        <DialogContent className="max-w-lg bg-white rounded-3xl p-0 overflow-hidden border-0 shadow-2xl">
-          <div className="bg-red-700 p-6 text-white">
-            <DialogHeader className="text-left space-y-1">
-              <DialogTitle className="text-xl font-bold text-white flex items-center gap-2">
-                <DoorOpen className="w-6 h-6 text-red-200" />
-                Confirmação de Alta Hospitalar
-              </DialogTitle>
-              <DialogDescription className="text-red-100 text-sm">
-                Registro oficial da Portaria para desocupação do leito e saída do paciente.
-              </DialogDescription>
-            </DialogHeader>
-          </div>
-
-          <div className="p-6 bg-slate-50 space-y-4">
-            <div className="p-4 bg-white border border-slate-200 rounded-2xl shadow-2xs">
-              <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">Paciente & Leito</div>
-              <div className="text-lg font-bold text-gray-900 mt-0.5">
-                {pacienteParaAlta?.usuario_nome}
-              </div>
-              <div className="text-xs text-primary-blue font-semibold mt-1">
-                Leito: {pacienteParaAlta?.leito} | Atendimento: {pacienteParaAlta?.id_atendimento}
-              </div>
-            </div>
-
-            <div className="bg-amber-50 border-l-4 border-amber-500 p-3.5 rounded-r-xl text-xs text-amber-900 font-medium flex items-start gap-2">
-              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-              <span>
-                <strong>Ação Irreversível no Leito:</strong> O status mudará para <span className="font-bold">ALTA</span>, o leito será liberado imediatamente e todas as credenciais ativas deste paciente serão revogadas no banco.
-              </span>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
-                Observações de Saída (Opcional)
-              </label>
-              <textarea
-                rows={2}
-                value={obsAlta}
-                onChange={(e) => setObsAlta(e.target.value)}
-                placeholder="Ex: Saída acompanhada pela família às 11:30"
-                className="w-full p-3 bg-white border border-slate-300 rounded-xl text-sm outline-none focus:border-red-600 focus:ring-2 focus:ring-red-100"
-              />
-            </div>
-
-            <div className="flex gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => setPacienteParaAlta(null)}
-                disabled={isConfirmandoAlta}
-                className="flex-1 py-3 text-sm font-bold text-gray-600 bg-gray-200 hover:bg-gray-300 rounded-xl transition-colors cursor-pointer"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmarAlta}
-                disabled={isConfirmandoAlta}
-                className="flex-1 py-3 text-sm font-bold text-white bg-red-700 hover:bg-red-800 rounded-xl shadow-md transition-transform active:scale-95 disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2"
-              >
-                <DoorOpen className="w-4 h-4" />
-                {isConfirmandoAlta ? "Confirmando..." : "Confirmar Alta"}
-              </button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       {/* Header Principal */}
       <header className="w-full bg-white shadow-sm p-5 flex flex-col md:flex-row justify-between items-center border-b-4 border-primary-blue gap-4">
@@ -441,105 +554,11 @@ function DashboardContent() {
 
           {/* CARD DE DESTAQUE DO PACIENTE SELECIONADO NA BUSCA */}
           {pacienteFocado && (
-            <div className="mt-5 p-5 bg-gradient-to-r from-blue-50/90 to-indigo-50/60 border-2 border-primary-blue/30 rounded-2xl animate-in fade-in slide-in-from-top-2 duration-200 shadow-sm">
-              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-xs font-extrabold text-primary-blue bg-white px-2.5 py-0.5 rounded-full border border-blue-200 uppercase tracking-wider">
-                      Prontuário Ativo
-                    </span>
-                    <span className="text-xs font-bold text-slate-500">
-                      ID Atendimento: <strong>{pacienteFocado.id_atendimento}</strong>
-                    </span>
-                  </div>
-
-                  <h3 className="text-xl font-bold text-gray-900 mt-1 flex items-center gap-2 flex-wrap">
-                    <span>{pacienteFocado.usuario_nome}</span>
-                    <span className="text-primary-blue bg-blue-100/70 border border-blue-300 px-3 py-0.5 rounded-lg text-sm font-bold">
-                      {pacienteFocado.leito}
-                    </span>
-                    {pacienteFocado.nome_mae && (
-                      <span className="text-xs font-semibold text-slate-600 bg-white border border-slate-200 px-2.5 py-1 rounded-md">
-                        Mãe: {pacienteFocado.nome_mae}
-                      </span>
-                    )}
-                  </h3>
-
-                  {/* Placar de Cotas em Destaque */}
-                  <div className="mt-2.5 flex flex-wrap items-center gap-3">
-                    {(() => {
-                      const isVermelha = pacienteFocado.setor_clinica?.toLowerCase().includes("vermelh") || pacienteFocado.leito?.toLowerCase().includes("vermelh");
-                      const cotaMax = isVermelha ? 1 : 2;
-                      const cotasUsadas = pacienteFocado.cotas_usadas ?? (pacienteFocado.visitante_ativo ? 1 : 0);
-                      const cotaEsgotada = cotasUsadas >= cotaMax;
-
-                      return (
-                        <>
-                          <div className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-2 border shadow-2xs ${
-                            cotaEsgotada
-                              ? "bg-red-50 text-red-800 border-red-300"
-                              : "bg-emerald-50 text-emerald-800 border-emerald-300"
-                          }`}>
-                            <Users className="w-4 h-4" />
-                            <span>Placar Hoje: <strong>{cotasUsadas}/{cotaMax}</strong></span>
-                            {cotaEsgotada ? (
-                              <span className="bg-red-200 text-red-900 px-1.5 py-0.5 rounded text-[10px] uppercase font-extrabold">Cota Esgotada</span>
-                            ) : (
-                              <span className="bg-emerald-200 text-emerald-900 px-1.5 py-0.5 rounded text-[10px] uppercase font-extrabold">Vaga Disponível</span>
-                            )}
-                          </div>
-
-                          <div className="text-xs text-gray-600 flex items-center gap-2">
-                            <span>Acompanhante: <strong className="text-gray-900">{pacienteFocado.acompanhante_nome || "Nenhum"}</strong></span>
-                            <span>•</span>
-                            <span>Visitante no Quarto: <strong className="text-primary-green">{pacienteFocado.visitante_ativo || "Nenhum no momento"}</strong></span>
-                          </div>
-                        </>
-                      );
-                    })()}
-                  </div>
-                </div>
-
-                {/* Botões de Ação do Paciente Focado */}
-                <div className="flex flex-wrap items-center gap-2 shrink-0">
-                  <button
-                    onClick={() => handleOpenCheckIn(pacienteFocado, 'visitante')}
-                    className="bg-primary-green hover:bg-green-600 text-white font-bold text-xs sm:text-sm px-4 py-2.5 rounded-xl shadow-xs transition-all active:scale-95 flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <UserPlus className="w-4 h-4" />
-                    Liberar Visitante
-                  </button>
-
-                  <button
-                    onClick={() => handleOpenCheckIn(pacienteFocado, 'acompanhante')}
-                    className="bg-primary-blue hover:bg-blue-700 text-white font-bold text-xs sm:text-sm px-4 py-2.5 rounded-xl shadow-xs transition-all active:scale-95 flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <ArrowLeftRight className="w-4 h-4" />
-                    Trocar Acomp.
-                  </button>
-
-                  {pacienteFocado.visitante_ativo && (
-                    <button
-                      onClick={() => handleSaidaVisitante(pacienteFocado.id)}
-                      className="bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold text-xs sm:text-sm px-3.5 py-2.5 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 border border-amber-300"
-                      title="Registrar Check-out do visitante"
-                    >
-                      <UserMinus className="w-4 h-4" />
-                      Saída Visitante
-                    </button>
-                  )}
-
-                  <button
-                    onClick={() => setPacienteParaAlta(pacienteFocado)}
-                    className="bg-red-50 hover:bg-red-100 text-red-700 font-bold text-xs sm:text-sm px-3.5 py-2.5 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 border border-red-200"
-                    title="Confirmar Alta Hospitalar e desocupar o leito"
-                  >
-                    <DoorOpen className="w-4 h-4" />
-                    Dar Alta
-                  </button>
-                </div>
-              </div>
-            </div>
+            <PacienteSelecionadoCard
+              paciente={pacienteFocado}
+              onOpenCheckIn={(tipo) => handleOpenCheckIn(pacienteFocado, tipo)}
+              onSaidaVisitante={handleSaidaVisitante}
+            />
           )}
         </section>
 
@@ -703,41 +722,28 @@ function DashboardContent() {
 
                           {/* Visitante no Quarto */}
                           <td className="p-4">
-                            {p.visitante_ativo ? (
-                              <div className="flex items-center justify-between gap-2 bg-green-50 p-2 rounded-xl border border-green-200">
-                                <span className="text-primary-green text-xs font-bold flex items-center gap-1.5">
-                                  <span className="w-2 h-2 rounded-full bg-primary-green animate-pulse"></span>
-                                  {p.visitante_ativo}
-                                </span>
-                                <button
-                                  onClick={() => handleSaidaVisitante(p.id)}
-                                  title="Registrar Saída do Visitante (Check-out)"
-                                  className="text-gray-400 hover:text-red-600 hover:bg-red-50 p-1 rounded-lg transition-colors cursor-pointer"
-                                >
-                                  <UserMinus className="w-4 h-4" />
-                                </button>
-                              </div>
-                            ) : (
-                              <span className="text-xs text-gray-400 italic">Quarto livre</span>
-                            )}
+                            <CardVisitanteNoQuarto
+                              compacto
+                              visitantes={p.visitantes || (p.visitante_ativo ? [{
+                                id: p.id * 1000 + 1,
+                                nome: p.visitante_ativo,
+                                documento: p.visitante_documento,
+                                telefone: p.visitante_telefone,
+                              }] : [])}
+                              pacienteId={p.id}
+                              onSaidaVisitante={(visId) => handleSaidaVisitante(p.id, visId)}
+                            />
                           </td>
 
                           {/* Ações da Portaria */}
                           <td className="p-4 text-center">
-                            <div className="flex items-center justify-center gap-1.5">
+                            <div className="flex items-center justify-center">
                               <button
                                 onClick={() => handleOpenCheckIn(p, 'visitante')}
-                                className="bg-primary-green hover:bg-green-600 text-white font-bold text-xs px-3 py-1.5 rounded-lg shadow-xs transition-all active:scale-95 cursor-pointer"
+                                className="bg-primary-green hover:bg-green-600 text-white font-bold text-xs px-4 py-2 rounded-lg shadow-xs transition-all active:scale-95 cursor-pointer"
                                 title="Liberar novo visitante ou trocar acompanhante"
                               >
                                 Check-in
-                              </button>
-                              <button
-                                onClick={() => setPacienteParaAlta(p)}
-                                className="text-red-700 hover:bg-red-50 border border-red-200 font-bold text-xs px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer"
-                                title="Registrar Alta Hospitalar"
-                              >
-                                Alta
                               </button>
                             </div>
                           </td>

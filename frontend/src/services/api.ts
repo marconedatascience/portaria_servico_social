@@ -1,7 +1,28 @@
 import { supabase } from '../lib/supabase';
 
+export interface Acompanhante {
+  id?: number;
+  nome: string;
+  documento?: string | null;
+  telefone?: string | null;
+  data_cadastro?: string;
+  status?: string;
+}
+
+export interface Visitante {
+  id?: number;
+  nome: string;
+  documento?: string | null;
+  telefone?: string | null;
+  data_entrada?: string;
+  status?: string;
+  isProcedimento?: boolean;
+  tipoAcesso?: 'VISITANTE' | 'ORELHINHA' | 'OBITO' | 'PROCEDIMENTO';
+}
+
 export interface Paciente {
   id: number;
+  uuid?: string;
   leito: string;
   usuario_nome: string;
   nome_mae?: string | null;
@@ -9,7 +30,15 @@ export interface Paciente {
   id_atendimento: string;
   municipio?: string | null;
   acompanhante_nome?: string | null;
+  acompanhante_documento?: string | null;
+  acompanhante_telefone?: string | null;
+  acompanhante?: Acompanhante | null;
   visitante_ativo?: string | null;
+  visitante_documento?: string | null;
+  visitante_telefone?: string | null;
+  visitante?: Visitante | null;
+  visitantes?: Visitante[];
+  procedimentos_ativos?: Visitante[];
   status_internacao?: string;
   data_internacao: string;
   data_alta?: string | null;
@@ -95,6 +124,13 @@ const PACIENTES_INICIAIS: Paciente[] = [
     setor_clinica: 'Clínica Médica',
     municipio: 'Arapiraca - AL',
     acompanhante_nome: 'Maria da Silva',
+    acompanhante_documento: '123.456.789-00',
+    acompanhante_telefone: '(82) 98888-1111',
+    acompanhante: {
+      nome: 'Maria da Silva',
+      documento: '123.456.789-00',
+      telefone: '(82) 98888-1111',
+    },
     visitante_ativo: null,
     status_internacao: 'INTERNADO',
     data_internacao: new Date().toISOString(),
@@ -111,6 +147,13 @@ const PACIENTES_INICIAIS: Paciente[] = [
     setor_clinica: 'Vermelha',
     municipio: 'Palmeira dos Índios - AL',
     acompanhante_nome: 'Pedro Alves',
+    acompanhante_documento: '234.567.890-11',
+    acompanhante_telefone: '(82) 98777-2222',
+    acompanhante: {
+      nome: 'Pedro Alves',
+      documento: '234.567.890-11',
+      telefone: '(82) 98777-2222',
+    },
     visitante_ativo: null,
     status_internacao: 'INTERNADO',
     data_internacao: new Date().toISOString(),
@@ -127,6 +170,13 @@ const PACIENTES_INICIAIS: Paciente[] = [
     setor_clinica: 'Maternidade',
     municipio: 'Arapiraca - AL',
     acompanhante_nome: 'Carlos Lima',
+    acompanhante_documento: '045.892.123-99',
+    acompanhante_telefone: '(82) 99123-4567',
+    acompanhante: {
+      nome: 'Carlos Lima',
+      documento: '045.892.123-99',
+      telefone: '(82) 99123-4567',
+    },
     visitante_ativo: null,
     status_internacao: 'INTERNADO',
     data_internacao: new Date().toISOString(),
@@ -143,6 +193,13 @@ const PACIENTES_INICIAIS: Paciente[] = [
     setor_clinica: 'Pediatria',
     municipio: 'Craíbas - AL',
     acompanhante_nome: 'Camila dos Santos',
+    acompanhante_documento: '345.678.901-22',
+    acompanhante_telefone: '(82) 99666-3333',
+    acompanhante: {
+      nome: 'Camila dos Santos',
+      documento: '345.678.901-22',
+      telefone: '(82) 99666-3333',
+    },
     visitante_ativo: null,
     status_internacao: 'INTERNADO',
     data_internacao: new Date().toISOString(),
@@ -152,38 +209,156 @@ const PACIENTES_INICIAIS: Paciente[] = [
   }
 ];
 
+const STORAGE_PACIENTES_KEY = 'hnsbc_pacientes_dados_v2';
+
+export const carregarMemoriaPersistida = (): Paciente[] => {
+  if (typeof window !== 'undefined') {
+    try {
+      const salvo = localStorage.getItem(STORAGE_PACIENTES_KEY);
+      if (salvo) {
+        const parsed = JSON.parse(salvo);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          pacientesMemoria = parsed;
+          return parsed;
+        }
+      }
+    } catch (e) {
+      console.warn("Erro ao ler dados persistidos do localStorage:", e);
+    }
+  }
+  return pacientesMemoria;
+};
+
+export const salvarMemoriaPersistida = (lista: Paciente[]) => {
+  pacientesMemoria = lista;
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem(STORAGE_PACIENTES_KEY, JSON.stringify(lista));
+    } catch (e) {
+      console.warn("Erro ao salvar dados no localStorage:", e);
+    }
+  }
+};
+
 let pacientesMemoria: Paciente[] = [...PACIENTES_INICIAIS];
 const cotasDiariasMemoria: Record<number, number> = {};
+
+// Inicializa a memória se houver dados persistidos no navegador
+if (typeof window !== 'undefined') {
+  carregarMemoriaPersistida();
+}
 
 export const fetchPacientes = async (): Promise<Paciente[]> => {
   try {
     const { data, error } = await supabase
       .from('pacientes')
       .select('*')
-      .order('id', { ascending: true });
+      .order('criado_em', { ascending: false });
 
     if (!error && data && data.length > 0) {
-      return data;
+      return data.map((p, idx) => {
+        const isVermelha = (p.tipo_leito || p.setor_clinica || '').toUpperCase().includes('VERMELHA');
+        const cotaMax = isVermelha ? 1 : 2;
+        const leitoFormatado = p.leito || (p.tipo_leito ? `${p.tipo_leito.replace(/_/g, ' ')} ${p.leito_atual || ''}`.trim() : `Leito ${idx + 1}`);
+        const idNumerico = typeof p.id === 'number' ? p.id : (idx + 1);
+
+        return {
+          id: idNumerico,
+          uuid: String(p.id),
+          id_atendimento: p.id_atendimento || `ATD-2026-${String(idx + 1).padStart(3, '0')}`,
+          usuario_nome: p.usuario_nome || p.nome || 'Paciente sem nome',
+          nome_mae: p.nome_mae || null,
+          leito: leitoFormatado,
+          setor_clinica: p.setor_clinica || p.tipo_leito || 'Geral',
+          municipio: p.municipio || 'Alagoas',
+          acompanhante_nome: p.acompanhante_nome || null,
+          acompanhante: p.acompanhante || null,
+          visitante_ativo: p.visitante_ativo || null,
+          visitantes: p.visitantes || [],
+          status_internacao: p.status_internacao || p.status || 'INTERNADO',
+          data_internacao: p.data_internacao || p.data_entrada || new Date().toISOString(),
+          cota_maxima: p.cota_maxima || cotaMax,
+          cotas_usadas: p.cotas_usadas || (p.visitante_ativo ? 1 : 0),
+          placar: p.placar || `Visitantes: ${p.cotas_usadas || (p.visitante_ativo ? 1 : 0)}/${cotaMax}`
+        };
+      });
     }
   } catch (err) {
     console.warn("Utilizando base operacional local HNSBC para os leitos:", err);
   }
-  return pacientesMemoria;
+  return carregarMemoriaPersistida();
 };
 
-// RPC 1: Emitir Credencial de Visitante (Anti-revezamento com cota estrita e QR cego HNSBC|UUID)
+/**
+ * Busca os dados completos de um paciente via API (GET),
+ * incluindo acompanhante e a lista completa de visitantes no quarto.
+ * Garante persistência e dados íntegros após recarregar a tela (F5).
+ */
+export const fetchPacientePorId = async (pacienteId: number): Promise<Paciente | null> => {
+  try {
+    const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+    try {
+      const resp = await fetch(`${backendUrl}/api/v1/pacientes/${pacienteId}`, {
+        headers: { "Content-Type": "application/json" }
+      });
+      if (resp.ok) {
+        const dados = await resp.json();
+        return dados;
+      }
+    } catch {
+      // Fallback para Supabase ou base operacional caso o backend python esteja offline
+    }
+
+    const { data, error } = await supabase
+      .from('pacientes')
+      .select('*')
+      .eq('id', pacienteId)
+      .maybeSingle();
+
+    if (!error && data) {
+      return data;
+    }
+
+    const lista = await fetchPacientes();
+    const encontrado = lista.find(p => p.id === pacienteId);
+    if (encontrado) {
+      return encontrado;
+    }
+  } catch (err) {
+    console.warn("Utilizando base operacional local para carregar paciente:", err);
+  }
+
+  // Fallback local garantindo persistência no F5
+  const listaLocal = carregarMemoriaPersistida();
+  const paciente = listaLocal.find(p => p.id === pacienteId);
+  return paciente || null;
+};
+
+export const fetchPacienteCompleto = fetchPacientePorId;
+
+export interface EmitirCredencialOpcoes {
+  isProcedimento?: boolean;
+  tipoAcesso?: 'VISITANTE' | 'ORELHINHA' | 'OBITO' | 'PROCEDIMENTO';
+}
+
+// RPC 1: Emitir Credencial de Visitante ou Procedimento Clínico (Orelhinha com cota isolada)
 export const emitirCredencialVisitante = async (
   pacienteId: number,
   nomeVisitante: string,
   documento?: string,
-  telefone?: string
+  telefone?: string,
+  opcoes?: EmitirCredencialOpcoes
 ): Promise<RespostaCredencial> => {
+  const isProc = Boolean(opcoes?.isProcedimento || opcoes?.tipoAcesso === 'ORELHINHA' || nomeVisitante.startsWith('Orelhinha:'));
+  const tipoFinal = opcoes?.tipoAcesso || (isProc ? 'ORELHINHA' : 'VISITANTE');
+
   try {
     const { data, error } = await supabase.rpc('rpc_emitir_credencial_visitante', {
       p_paciente_id: pacienteId,
       p_nome_visitante: nomeVisitante,
       p_documento: documento || null,
       p_telefone: telefone || null,
+      p_tipo: tipoFinal,
     });
 
     if (!error && data) {
@@ -191,8 +366,8 @@ export const emitirCredencialVisitante = async (
     }
 
     if (error && error.code !== 'PGRST202') {
-      console.error("Erro ao emitir credencial de visitante:", error);
-      throw erroLegivel(error, 'Não foi possível liberar o visitante.');
+      console.error("Erro ao emitir credencial:", error);
+      throw erroLegivel(error, 'Não foi possível liberar o acesso.');
     }
   } catch (err: unknown) {
     const msg = (err as { message?: string })?.message || '';
@@ -207,27 +382,61 @@ export const emitirCredencialVisitante = async (
   const cotaMax = isVermelha ? 1 : 2;
   const usadasHoje = cotasDiariasMemoria[pacienteId] || 0;
 
-  if (usadasHoje >= cotaMax) {
+  // Apenas visitantes de quarto consomem e validam a cota diária de visitas!
+  if (!isProc && usadasHoje >= cotaMax) {
     throw new Error('Cota máxima atingida hoje');
   }
 
   const token = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `hnsbc-${Math.random().toString(36).substring(2, 11)}`;
-  const novoUsadas = usadasHoje + 1;
-  cotasDiariasMemoria[pacienteId] = novoUsadas;
+  const novoUsadas = isProc ? usadasHoje : usadasHoje + 1;
+  if (!isProc) {
+    cotasDiariasMemoria[pacienteId] = novoUsadas;
+  }
 
-  // Atualiza leito na memória
+  // Atualiza leito na memória mantendo histórico de múltiplos acessos sem sobrescrever
   pacientesMemoria = pacientesMemoria.map(p => {
     if (p.id === pacienteId) {
+      const novoId = Date.now() + Math.floor(Math.random() * 1000);
+      const novoAcesso: Visitante = {
+        id: novoId,
+        nome: nomeVisitante,
+        documento: documento || null,
+        telefone: telefone || null,
+        data_entrada: new Date().toISOString(),
+        status: 'ATIVO',
+        isProcedimento: isProc,
+        tipoAcesso: tipoFinal,
+      };
+
+      const listaAnterior: Visitante[] = Array.isArray(p.visitantes)
+        ? p.visitantes
+        : (p.visitante ? [p.visitante] : (p.visitante_ativo ? [{ id: p.id * 1000 + 1, nome: p.visitante_ativo, documento: p.visitante_documento, telefone: p.visitante_telefone, isProcedimento: false, tipoAcesso: 'VISITANTE' }] : []));
+
+      const novaLista = [...listaAnterior, novoAcesso];
+      const listaProcedimentos = isProc
+        ? [...(p.procedimentos_ativos || []), novoAcesso]
+        : (p.procedimentos_ativos || []);
+
+      const visitantesSociais = novaLista.filter(v => !v.isProcedimento && v.tipoAcesso !== 'ORELHINHA');
+      const ultimoVisitanteSocial = visitantesSociais.length > 0 ? visitantesSociais[visitantesSociais.length - 1] : null;
+
       return {
         ...p,
-        visitante_ativo: nomeVisitante,
-        cotas_usadas: novoUsadas,
+        visitante_ativo: visitantesSociais.length > 0 ? visitantesSociais.map(v => v.nome).join(', ') : null,
+        visitante_documento: ultimoVisitanteSocial?.documento || null,
+        visitante_telefone: ultimoVisitanteSocial?.telefone || null,
+        visitante: ultimoVisitanteSocial,
+        visitantes: novaLista,
+        procedimentos_ativos: listaProcedimentos,
+        cotas_usadas: isProc ? (p.cotas_usadas ?? 0) : novoUsadas,
         cota_maxima: cotaMax,
-        placar: `Visitantes: ${novoUsadas}/${cotaMax}`
+        placar: isProc ? p.placar : `Visitantes: ${novoUsadas}/${cotaMax}`
       };
     }
     return p;
   });
+
+  salvarMemoriaPersistida(pacientesMemoria);
 
   return {
     sucesso: true,
@@ -237,7 +446,7 @@ export const emitirCredencialVisitante = async (
     cotas_usadas: novoUsadas,
     cota_maxima: cotaMax,
     placar: `${novoUsadas}/${cotaMax}`,
-    mensagem: 'Credencial de visitante emitida com sucesso!'
+    mensagem: isProc ? 'Credencial para Teste da Orelhinha emitida com sucesso!' : 'Credencial de visitante emitida com sucesso!'
   };
 };
 
@@ -276,11 +485,22 @@ export const trocarAcompanhanteRPC = async (
     if (p.id === pacienteId) {
       return {
         ...p,
-        acompanhante_nome: novoAcompanhante
+        acompanhante_nome: novoAcompanhante,
+        acompanhante_documento: documento || null,
+        acompanhante_telefone: telefone || null,
+        acompanhante: {
+          nome: novoAcompanhante,
+          documento: documento || null,
+          telefone: telefone || null,
+          data_cadastro: new Date().toISOString(),
+          status: 'ATIVO',
+        }
       };
     }
     return p;
   });
+
+  salvarMemoriaPersistida(pacientesMemoria);
 
   return {
     sucesso: true,
@@ -405,11 +625,15 @@ export const obterPlacarCotas = async (pacienteId: number): Promise<PlacarCotas>
   };
 };
 
-// RPC 8: Registrar Saída do Visitante
-export const registrarSaidaVisitante = async (pacienteId: number): Promise<{ sucesso: boolean; mensagem: string }> => {
+// RPC 8: Registrar Saída do Visitante (permite saída por ID específico de visitante ou desocupação geral)
+export const registrarSaidaVisitante = async (
+  pacienteId: number,
+  visitanteId?: number
+): Promise<{ sucesso: boolean; mensagem: string }> => {
   try {
     const { data, error } = await supabase.rpc('rpc_registrar_saida_visitante', {
       p_paciente_id: pacienteId,
+      p_visitante_id: visitanteId,
     });
 
     if (!error && data) {
@@ -421,13 +645,32 @@ export const registrarSaidaVisitante = async (pacienteId: number): Promise<{ suc
 
   pacientesMemoria = pacientesMemoria.map(p => {
     if (p.id === pacienteId) {
+      const listaAtual: Visitante[] = Array.isArray(p.visitantes)
+        ? p.visitantes
+        : (p.visitante ? [p.visitante] : (p.visitante_ativo ? [{ id: p.id * 1000 + 1, nome: p.visitante_ativo, documento: p.visitante_documento, telefone: p.visitante_telefone }] : []));
+
+      const novaLista = visitanteId !== undefined
+        ? listaAtual.filter(v => v.id !== visitanteId)
+        : [];
+
+      const novosProcedimentos = (p.procedimentos_ativos || []).filter(v => v.id !== visitanteId);
+      const visitantesSociais = novaLista.filter(v => !v.isProcedimento && v.tipoAcesso !== 'ORELHINHA');
+      const ultimo = visitantesSociais.length > 0 ? visitantesSociais[visitantesSociais.length - 1] : null;
+
       return {
         ...p,
-        visitante_ativo: null
+        visitantes: novaLista,
+        procedimentos_ativos: novosProcedimentos,
+        visitante: ultimo,
+        visitante_ativo: visitantesSociais.length > 0 ? visitantesSociais.map(v => v.nome).join(', ') : null,
+        visitante_documento: ultimo?.documento || null,
+        visitante_telefone: ultimo?.telefone || null,
       };
     }
     return p;
   });
+
+  salvarMemoriaPersistida(pacientesMemoria);
 
   return { sucesso: true, mensagem: 'Saída do visitante registrada com sucesso!' };
 };
@@ -478,14 +721,17 @@ export const trocarAcompanhante = async (pacienteId: number, nomeAcompanhante: s
   }
 };
 
-export const desocuparVisitante = async (pacienteId: number): Promise<Paciente> => {
+export const desocuparVisitante = async (pacienteId: number, visitanteId?: number): Promise<Paciente> => {
   try {
-    await registrarSaidaVisitante(pacienteId);
+    await registrarSaidaVisitante(pacienteId, visitanteId);
     const { data } = await supabase.from('pacientes').select('*').eq('id', pacienteId).single();
-    return data;
+    if (data) return data;
   } catch (err) {
-    throw err;
+    // fallback
   }
+  const pac = pacientesMemoria.find(p => p.id === pacienteId);
+  if (!pac) throw new Error("Paciente não encontrado");
+  return pac;
 };
 
 export interface RegraHorario {
