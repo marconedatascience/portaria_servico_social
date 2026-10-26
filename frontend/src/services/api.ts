@@ -294,7 +294,7 @@ export const fetchPacientes = async (): Promise<Paciente[]> => {
  * incluindo acompanhante e a lista completa de visitantes no quarto.
  * Garante persistência e dados íntegros após recarregar a tela (F5).
  */
-export const fetchPacientePorId = async (pacienteId: number): Promise<Paciente | null> => {
+export const fetchPacientePorId = async (pacienteId: number | string): Promise<Paciente | null> => {
   try {
     const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
     try {
@@ -309,18 +309,41 @@ export const fetchPacientePorId = async (pacienteId: number): Promise<Paciente |
       // Fallback para Supabase ou base operacional caso o backend python esteja offline
     }
 
-    const { data, error } = await supabase
-      .from('pacientes')
-      .select('*')
-      .eq('id', pacienteId)
-      .maybeSingle();
+    const isUuid = typeof pacienteId === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(pacienteId);
+    if (isUuid) {
+      const { data, error } = await supabase
+        .from('pacientes')
+        .select('*')
+        .eq('id', pacienteId)
+        .maybeSingle();
 
-    if (!error && data) {
-      return data;
+      if (!error && data) {
+        const isVermelha = (data.tipo_leito || data.setor_clinica || '').toUpperCase().includes('VERMELHA');
+        const cotaMax = isVermelha ? 1 : 2;
+        return {
+          id: 1,
+          uuid: data.id,
+          id_atendimento: data.id_atendimento || `ATD-2026-001`,
+          usuario_nome: data.nome || data.usuario_nome || 'Paciente sem nome',
+          nome_mae: data.nome_mae || null,
+          leito: data.leito || `${data.tipo_leito?.replace(/_/g, ' ') || 'Leito'} ${data.leito_atual || ''}`.trim(),
+          setor_clinica: data.tipo_leito || data.setor_clinica || 'Geral',
+          municipio: data.municipio || 'Alagoas',
+          acompanhante_nome: data.acompanhante_nome || null,
+          acompanhante: data.acompanhante || null,
+          visitante_ativo: data.visitante_ativo || null,
+          visitantes: data.visitantes || [],
+          status_internacao: data.status || data.status_internacao || 'INTERNADO',
+          data_internacao: data.data_entrada || data.data_internacao || new Date().toISOString(),
+          cota_maxima: cotaMax,
+          cotas_usadas: data.cotas_usadas || (data.visitante_ativo ? 1 : 0),
+          placar: `Visitantes: ${data.cotas_usadas || (data.visitante_ativo ? 1 : 0)}/${cotaMax}`
+        };
+      }
     }
 
     const lista = await fetchPacientes();
-    const encontrado = lista.find(p => p.id === pacienteId);
+    const encontrado = lista.find(p => p.id === Number(pacienteId) || p.uuid === String(pacienteId));
     if (encontrado) {
       return encontrado;
     }
@@ -330,7 +353,7 @@ export const fetchPacientePorId = async (pacienteId: number): Promise<Paciente |
 
   // Fallback local garantindo persistência no F5
   const listaLocal = carregarMemoriaPersistida();
-  const paciente = listaLocal.find(p => p.id === pacienteId);
+  const paciente = listaLocal.find(p => p.id === Number(pacienteId) || p.uuid === String(pacienteId));
   return paciente || null;
 };
 
