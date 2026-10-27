@@ -10,7 +10,6 @@ export const supabase = createBrowserClient(supabaseUrl, supabaseKey);
 
 if (typeof window !== 'undefined') {
   const originalGetSession = supabase.auth.getSession.bind(supabase.auth);
-  // Suporte a bypass de autenticação Playwright via localStorage / storageState
   (supabase.auth as any).getSession = async () => {
     try {
       const mock = window.localStorage.getItem('e2e_session');
@@ -21,4 +20,3 @@ if (typeof window !== 'undefined') {
     return originalGetSession();
   };
 }
-
