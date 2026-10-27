@@ -16,6 +16,7 @@ import {
 import { useVisitasStore } from "../context/VisitasContext";
 import { useOrelhinhaStore } from "../context/OrelhinhaContext";
 import CardVisitanteNoQuarto from "../components/CardVisitanteNoQuarto";
+import OrelhinhaTable from "../components/OrelhinhaTable";
 import { supabase } from "../lib/supabase";
 import { perfilDaSessao, rotaInicialDoPerfil } from "../lib/perfil";
 import AcessoPendente from "../components/AcessoPendente";
@@ -49,7 +50,7 @@ function DashboardContent() {
   const [pacienteFocado, setPacienteFocado] = useState<Paciente | null>(null);
   const [filtroTexto, setFiltroTexto] = useState("");
   const [filtroSetor, setFiltroSetor] = useState<string>("TODOS");
-  const [abaAtiva, setAbaAtiva] = useState<"geral" | "servico_social">("geral");
+  const [abaAtiva, setAbaAtiva] = useState<"geral" | "servico_social" | "orelhinha">("geral");
   const [mensagemSucesso, setMensagemSucesso] = useState("");
 
   const { adicionarVisitante: adicionarVisitanteNaStore } = useVisitasStore();
@@ -592,6 +593,17 @@ function DashboardContent() {
               <FileSpreadsheet className="w-4 h-4" />
               Serviço Social (Checklist Xerox)
             </button>
+            <button
+              onClick={() => setAbaAtiva("orelhinha")}
+              className={`px-5 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all cursor-pointer flex items-center gap-2 ${
+                abaAtiva === "orelhinha"
+                  ? "bg-purple-700 text-white shadow-md"
+                  : "text-gray-600 hover:bg-slate-200/60"
+              }`}
+            >
+              <Baby className="w-4 h-4" />
+              Teste da Orelhinha (Social)
+            </button>
           </div>
 
           {abaAtiva === "geral" && (
@@ -619,9 +631,15 @@ function DashboardContent() {
           )}
         </div>
 
-        {/* 5. TABELA GERAL OU SERVIÇO SOCIAL */}
+        {/* 5. TABELA GERAL, SERVIÇO SOCIAL OU TESTE DA ORELHINHA */}
         {abaAtiva === "servico_social" ? (
           <TabelaServicoSocial pacientes={pacientesFiltrados} loading={loading} />
+        ) : abaAtiva === "orelhinha" ? (
+          <OrelhinhaTable
+            perfilProp="servico_social"
+            titulo="Módulo Teste da Orelhinha — Serviço Social"
+            subtitulo="Acompanhamento e Atualização Cadastral dos Recém-Nascidos • Data e Hora restritas à Fonoaudiologia"
+          />
         ) : (
           <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
             <div className="p-5 bg-gradient-to-r from-primary-blue to-blue-800 text-white flex justify-between items-center">

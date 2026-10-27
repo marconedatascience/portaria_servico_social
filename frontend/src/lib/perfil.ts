@@ -48,3 +48,56 @@ export function rotaInicialDoPerfil(perfil: Perfil): string {
   }
 }
 
+/**
+ * Retorna o perfil ativo do usuário atual para controle de acesso (RBAC).
+ * Suporta passagem explícita de session ou inferência client-side (cache/URL).
+ */
+export function perfil_atual(session?: Session | null): Perfil {
+  if (session) {
+    const p = perfilDaSessao(session);
+    if (p) return p;
+  }
+
+  if (typeof window !== 'undefined') {
+    // 1. Tenta recuperar do storage local da sessão
+    const salvo = localStorage.getItem('perfil_usuario_atual');
+    if (salvo && ['portaria', 'servico_social', 'fono', 'admin'].includes(salvo)) {
+      return salvo as Perfil;
+    }
+
+    // 2. Tenta inferir da rota do Next.js
+    const path = window.location.pathname;
+    if (path.includes('/dashboard/fono')) return 'fono';
+    if (path.includes('/dashboard/portaria')) return 'portaria';
+  }
+
+  // Padrão seguro para o painel geral (Serviço Social)
+  return 'servico_social';
+}
+
+/**
+ * RBAC: Fonoaudiólogo(a) e Admin são os ÚNICOS com permissão de UPDATE em Data do Exame e Hora.
+ * Portaria e Serviço Social têm permissão estritamente READ-ONLY nesses campos.
+ */
+export function canEditDataHora(perfil: Perfil | string | null): boolean {
+  if (!perfil) return false;
+  return perfil === 'fono' || perfil === 'admin';
+}
+
+/**
+ * RBAC: Portaria, Serviço Social, Fonoaudiólogo e Admin podem atualizar dados demográficos
+ * (Cartão SUS, Nome da Mãe, Município, Telefone, Sexo, Data de Nasc.).
+ */
+export function canEditDemograficos(perfil: Perfil | string | null): boolean {
+  if (!perfil) return false;
+  return ['portaria', 'servico_social', 'fono', 'admin'].includes(perfil);
+}
+
+/**
+ * RBAC: Portaria e Serviço Social possuem autorização para realizar Check-in de chegada da mãe/bebê.
+ */
+export function canCheckin(perfil: Perfil | string | null): boolean {
+  if (!perfil) return false;
+  return ['portaria', 'servico_social', 'admin'].includes(perfil);
+}
+

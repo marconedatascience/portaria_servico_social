@@ -9,15 +9,9 @@ import PacienteSelecionadoCard from "../../../components/PacienteSelecionadoCard
 import { fetchPacientes, fetchPacienteCompleto, registrarSaidaVisitante, Paciente, Visitante } from "../../../services/api";
 import { useVisitasStore } from "../../../context/VisitasContext";
 import { useOrelhinhaStore } from "../../../context/OrelhinhaContext";
+import OrelhinhaTable from "../../../components/OrelhinhaTable";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ShieldCheck, Calendar, Eye, Bed, Clock, Baby } from "lucide-react";
-
-// Mock da agenda da Fonoaudiologia para visualização Read-Only da Portaria
-const AGENDA_FONO_READONLY = [
-  { id: 1, paciente: "RN de Maria Eduarda", leito: "Maternidade 03", horario: "09:00", status: "Confirmado" },
-  { id: 2, paciente: "RN de Camila Santos", leito: "Berçário 02", horario: "10:30", status: "Em Espera" },
-  { id: 3, paciente: "RN de Beatriz Lima", leito: "Maternidade 07", horario: "14:00", status: "Agendado" },
-];
 
 function PortariaDashboardContent() {
   const [pacienteSelecionado, setPacienteSelecionado] = useState<Paciente | null>(null);
@@ -312,61 +306,12 @@ function PortariaDashboardContent() {
           )}
         </section>
 
-        {/* Bloco 2: Agenda da Fonoaudiologia (READ-ONLY) */}
-        <section className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
-          <div className="p-6 bg-gradient-to-r from-purple-800 to-indigo-900 text-white flex justify-between items-center">
-            <div>
-              <div className="flex items-center gap-2">
-                <Calendar className="w-5 h-5 text-purple-300" />
-                <h2 className="text-xl font-bold">Agenda do Teste da Orelhinha (Fonoaudiologia)</h2>
-              </div>
-              <p className="text-xs text-purple-200 mt-0.5">Visualização da Portaria para orientação de pais e responsáveis</p>
-            </div>
-            <span className="bg-purple-950/60 border border-purple-400/40 text-purple-200 px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-1.5">
-              <Eye className="w-3.5 h-3.5" /> Somente Leitura (Read-Only)
-            </span>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-slate-50 text-gray-700 text-sm border-b">
-                  <th className="p-4 font-semibold">Horário Previsto</th>
-                  <th className="p-4 font-semibold">Recém-Nascido / Paciente</th>
-                  <th className="p-4 font-semibold">Leito de Origem</th>
-                  <th className="p-4 font-semibold">Status do Agendamento</th>
-                  <th className="p-4 font-semibold text-center">Permissão</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 text-sm">
-                {AGENDA_FONO_READONLY.map((item) => (
-                  <tr key={item.id} className="hover:bg-slate-50/60">
-                    <td className="p-4 font-bold text-gray-800 flex items-center gap-1.5">
-                      <Clock className="w-4 h-4 text-purple-600" />
-                      {item.horario}
-                    </td>
-                    <td className="p-4 font-semibold text-gray-800">{item.paciente}</td>
-                    <td className="p-4 text-gray-600">
-                      <span className="bg-slate-100 px-2.5 py-1 rounded-md text-xs font-bold text-slate-700">
-                        {item.leito}
-                      </span>
-                    </td>
-                    <td className="p-4">
-                      <span className="inline-block px-3 py-1 rounded-full text-xs font-bold bg-green-100 text-green-800">
-                        {item.status}
-                      </span>
-                    </td>
-                    <td className="p-4 text-center">
-                      <span className="text-xs font-bold text-gray-400 bg-gray-100 px-2.5 py-1 rounded-lg">
-                        Alteração bloqueada (Setor Fono)
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
+        {/* Bloco 2: Triagem Auditiva Neonatal (Teste da Orelhinha) — Integração Portaria */}
+        <OrelhinhaTable
+          perfilProp="portaria"
+          titulo="Agenda da Triagem Auditiva Neonatal (Portaria)"
+          subtitulo="Controle de Chegada e Check-in de Pacientes • Data e Hora do Exame restritas à Fonoaudiologia"
+        />
       </main>
     </div>
   );

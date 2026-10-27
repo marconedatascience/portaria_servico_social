@@ -29,7 +29,9 @@ import {
 } from "lucide-react";
 import AutoCompleteRNPaciente from "../../../components/AutoCompleteRNPaciente";
 import { Paciente, fetchPacientes } from "../../../services/api";
-import { useOrelhinhaStore } from "../../../context/OrelhinhaContext";
+import { useOrelhinhaStore, ConsultaOrelhinhaItem } from "../../../context/OrelhinhaContext";
+import OrelhinhaTable from "../../../components/OrelhinhaTable";
+import { maskCartaoSUS, maskDate, maskPhone, maskTime } from "../../../utils/masks";
 import {
   Dialog,
   DialogContent,
@@ -38,90 +40,7 @@ import {
   DialogDescription,
 } from "../../../components/ui/dialog";
 
-export interface ConsultaOrelhinha {
-  id: number;
-  paciente: string;
-  leito: string;
-  responsavel: string;
-  data: string;
-  horario: string;
-  status: "Agendado" | "Realizado" | "Reagendado" | "Cancelado" | "Falha / Re-teste" | "Ausente";
-  presenca?: "Presente" | "Ausente" | "Pendente";
-  resultadoGeral?: "Passou (Normal bilateral)" | "Falha (Re-teste 30 dias)" | "Ausente / Não Realizado" | "Inconclusivo (Vernix / Ruído)";
-  orelhaDireita?: "Passou" | "Falhou";
-  orelhaEsquerda?: "Passou" | "Falhou";
-  indicadoresRisco?: string[];
-  observacoes?: string;
-  conduta?: string;
-  fonoaudiologo?: string;
-  crfa?: string;
-  dataRegistro?: string;
-}
-
-const CONSULTAS_PADRAO: ConsultaOrelhinha[] = [
-  {
-    id: 1,
-    paciente: "RN de Maria Eduarda",
-    leito: "Maternidade 03",
-    responsavel: "Maria Eduarda (Mãe)",
-    data: "2026-10-24",
-    horario: "09:00",
-    status: "Agendado",
-    presenca: "Pendente",
-    observacoes: "Recém-nascido a termo, 39 semanas, parto normal.",
-  },
-  {
-    id: 2,
-    paciente: "RN de Camila Santos",
-    leito: "Berçário 02",
-    responsavel: "Lucas Santos (Pai)",
-    data: "2026-10-24",
-    horario: "10:30",
-    status: "Agendado",
-    presenca: "Pendente",
-    observacoes: "Aguardando despertar para realização do teste.",
-  },
-  {
-    id: 3,
-    paciente: "RN de Beatriz Lima",
-    leito: "Maternidade 07",
-    responsavel: "Beatriz Lima (Mãe)",
-    data: "2026-10-24",
-    horario: "14:00",
-    status: "Realizado",
-    presenca: "Presente",
-    resultadoGeral: "Passou (Normal bilateral)",
-    orelhaDireita: "Passou",
-    orelhaEsquerda: "Passou",
-    fonoaudiologo: "Dra. Juliana Fonoaudióloga",
-    crfa: "CRFa 4-8921",
-    dataRegistro: "24/10/2026 14:22",
-    conduta: "Alta da triagem auditiva neonatal com orientações aos pais.",
-    observacoes: "EOA presentes e reprodutíveis bilateralmente em ambiente silencioso.",
-  },
-  {
-    id: 4,
-    paciente: "RN de Juliana Costa",
-    leito: "Berçário 04",
-    responsavel: "Juliana Costa (Mãe)",
-    data: "2026-10-25",
-    horario: "08:30",
-    status: "Agendado",
-    presenca: "Pendente",
-    observacoes: "Sem intercorrências no parto.",
-  },
-  {
-    id: 5,
-    paciente: "RN de Sandra Liberal",
-    leito: "Maternidade 01",
-    responsavel: "Sandra Liberal (Mãe)",
-    data: "2026-10-24",
-    horario: "11:15",
-    status: "Agendado",
-    presenca: "Pendente",
-    observacoes: "Encaminhada pela equipe da maternidade para triagem auditiva.",
-  },
-];
+export type ConsultaOrelhinha = ConsultaOrelhinhaItem;
 
 const OPCOES_RISCO = [
   "Histórico familiar de perda auditiva congênita",
@@ -141,14 +60,6 @@ function FonoDashboardContent() {
     removerConsultaOrelhinha,
   } = useOrelhinhaStore();
 
-  // Filtros e busca
-  const [termoBusca, setTermoBusca] = useState("");
-  const [filtroStatus, setFiltroStatus] = useState<"TODOS" | "AGENDADOS" | "REALIZADOS" | "FALHAS">("TODOS");
-
-  // Edição inline rápida de data/horário
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [editData, setEditData] = useState("");
-  const [editHorario, setEditHorario] = useState("");
   const [mensagemSucesso, setMensagemSucesso] = useState("");
 
   // Modal de Adicionar Novo Agendamento
@@ -158,6 +69,11 @@ function FonoDashboardContent() {
   const [novoPaciente, setNovoPaciente] = useState("");
   const [novoLeito, setNovoLeito] = useState("");
   const [novoResponsavel, setNovoResponsavel] = useState("");
+  const [novoSus, setNovoSus] = useState("");
+  const [novaDataNasc, setNovaDataNasc] = useState("25/10/2026");
+  const [novoSexo, setNovoSexo] = useState<"F" | "M">("F");
+  const [novoMunicipio, setNovoMunicipio] = useState("Arapiraca");
+  const [novoTelefone, setNovoTelefone] = useState("");
   const [novaData, setNovaData] = useState(() => new Date().toISOString().split("T")[0]);
   const [novoHorario, setNovoHorario] = useState("09:00");
   const [novaObservacao, setNovaObservacao] = useState("");
@@ -218,6 +134,8 @@ function FonoDashboardContent() {
     setNovoPaciente("");
     setNovoLeito("");
     setNovoResponsavel("");
+    setNovoSus("");
+    setNovoTelefone("");
   };
 
   // Modal de Formulário Clínico do Exame
@@ -314,34 +232,23 @@ function FonoDashboardContent() {
     );
   };
 
-  // Edição rápida de data/hora
-  const handleStartEdit = (c: ConsultaOrelhinha) => {
-    setEditingId(c.id);
-    setEditData(c.data);
-    setEditHorario(c.horario);
-  };
-
-  const handleSaveEdit = (id: number) => {
-    atualizarConsultaOrelhinha(id, {
-      data: editData,
-      horario: editHorario,
-      status: "Reagendado",
-    });
-    setEditingId(null);
-    setMensagemSucesso(`Horário da consulta #${id} reagendado com sucesso!`);
-    setTimeout(() => setMensagemSucesso(""), 4000);
-  };
-
   const handleAdicionarConsulta = (e: React.FormEvent) => {
     e.preventDefault();
     if (!novoPaciente.trim() || !novaData || !novoHorario) return;
 
+    const nomeMaeFinal = novoResponsavel.replace(/\s*\(.*\)/, "").trim() || (pacienteSelecionado?.nome_mae || "Mãe do RN");
     const novaConsulta = adicionarConsultaOrelhinha({
+      cartaoSus: maskCartaoSUS(novoSus || "89800" + String(Date.now()).slice(-10)),
+      dataNascimento: maskDate(novaDataNasc || "25/10/2026"),
+      sexo: novoSexo,
+      nomeMae: nomeMaeFinal,
+      municipio: novoMunicipio.trim() || "Arapiraca",
+      telefone: maskPhone(novoTelefone || "(82) 9.9988-7766"),
       paciente: novoPaciente.trim(),
       leito: novoLeito.trim() || "Maternidade",
-      responsavel: novoResponsavel.trim() || "Mãe/Responsável",
-      data: novaData,
-      horario: novoHorario,
+      responsavel: `${nomeMaeFinal} (Mãe)`,
+      data: maskDate(novaData),
+      horario: maskTime(novoHorario),
       status: "Agendado",
       presenca: "Pendente",
       observacoes: novaObservacao.trim(),
@@ -352,37 +259,15 @@ function FonoDashboardContent() {
     setNovoPaciente("");
     setNovoLeito("");
     setNovoResponsavel("");
+    setNovoSus("");
+    setNovoTelefone("");
     setNovaObservacao("");
     setPacienteSelecionado(null);
     setMensagemSucesso(`Novo agendamento criado para ${novaConsulta.paciente}!`);
     setTimeout(() => setMensagemSucesso(""), 5000);
   };
 
-  const handleExcluirConsulta = (id: number) => {
-    if (confirm("Deseja realmente remover este agendamento?")) {
-      removerConsultaOrelhinha(id);
-      setMensagemSucesso(`Agendamento #${id} removido.`);
-      setTimeout(() => setMensagemSucesso(""), 3000);
-    }
-  };
 
-  // Consultas filtradas
-  const consultasFiltradas = useMemo(() => {
-    return consultas.filter((c) => {
-      const matchBusca =
-        c.paciente.toLowerCase().includes(termoBusca.toLowerCase()) ||
-        c.leito.toLowerCase().includes(termoBusca.toLowerCase()) ||
-        c.responsavel.toLowerCase().includes(termoBusca.toLowerCase());
-
-      if (!matchBusca) return false;
-
-      if (filtroStatus === "AGENDADOS") return c.status === "Agendado" || c.status === "Reagendado";
-      if (filtroStatus === "REALIZADOS") return c.status === "Realizado";
-      if (filtroStatus === "FALHAS") return c.status === "Falha / Re-teste";
-
-      return true;
-    });
-  }, [consultas, termoBusca, filtroStatus]);
 
   // Contadores para métricas
   const totalAgendados = consultas.filter((c) => c.status === "Agendado" || c.status === "Reagendado").length;
@@ -934,256 +819,13 @@ function FonoDashboardContent() {
           </div>
         )}
 
-        {/* Tabela de Pacientes Agendados e Registro Clínico */}
-        <div className="bg-white rounded-3xl shadow-sm border border-slate-200/90 overflow-hidden">
-          {/* Barra de Filtros e Busca */}
-          <div className="p-5 border-b border-slate-100 bg-slate-50/60 flex flex-col md:flex-row justify-between items-stretch md:items-center gap-3">
-            <div className="relative flex-1 max-w-md">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                placeholder="Buscar por recém-nascido, leito ou responsável..."
-                value={termoBusca}
-                onChange={(e) => setTermoBusca(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-800 outline-none focus:border-purple-600 shadow-2xs transition-all font-medium"
-              />
-            </div>
-
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0">
-              <button
-                type="button"
-                onClick={() => setFiltroStatus("TODOS")}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                  filtroStatus === "TODOS"
-                    ? "bg-purple-700 text-white shadow-2xs"
-                    : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-100"
-                }`}
-              >
-                Todos ({consultas.length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setFiltroStatus("AGENDADOS")}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                  filtroStatus === "AGENDADOS"
-                    ? "bg-purple-700 text-white shadow-2xs"
-                    : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-100"
-                }`}
-              >
-                Agendados ({totalAgendados})
-              </button>
-              <button
-                type="button"
-                onClick={() => setFiltroStatus("REALIZADOS")}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                  filtroStatus === "REALIZADOS"
-                    ? "bg-emerald-600 text-white shadow-2xs"
-                    : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-100"
-                }`}
-              >
-                Concluídos ({totalRealizados})
-              </button>
-              <button
-                type="button"
-                onClick={() => setFiltroStatus("FALHAS")}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                  filtroStatus === "FALHAS"
-                    ? "bg-amber-600 text-white shadow-2xs"
-                    : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-100"
-                }`}
-              >
-                Falhas ({totalFalhas})
-              </button>
-            </div>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-slate-50 text-slate-700 text-xs uppercase tracking-wider border-b border-slate-200/80">
-                  <th className="p-4 font-bold">Recém-Nascido / Paciente</th>
-                  <th className="p-4 font-bold">Leito</th>
-                  <th className="p-4 font-bold">Responsável</th>
-                  <th className="p-4 font-bold">Data & Horário</th>
-                  <th className="p-4 font-bold">Status Clínico</th>
-                  <th className="p-4 font-bold">Resultado EOA</th>
-                  <th className="p-4 font-bold text-center">Ação Clínica</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 text-sm">
-                {consultasFiltradas.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="p-8 text-center text-slate-500 font-medium">
-                      Nenhum agendamento encontrado para os filtros selecionados.
-                    </td>
-                  </tr>
-                ) : (
-                  consultasFiltradas.map((c) => {
-                    const isEditing = editingId === c.id;
-                    const temResultado = Boolean(c.resultadoGeral);
-
-                    return (
-                      <tr
-                        key={c.id}
-                        className="hover:bg-purple-50/50 transition-colors cursor-pointer group"
-                        onClick={(e) => {
-                          // Se o clique foi no input de editar horário ou botão de excluir, não abre modal
-                          const target = e.target as HTMLElement;
-                          if (target.closest("button") || target.closest("input")) return;
-                          abrirModalClinico(c);
-                        }}
-                      >
-                        <td className="p-4">
-                          <div className="flex items-center gap-2">
-                            <span className="w-2.5 h-2.5 rounded-full bg-purple-600 group-hover:scale-125 transition-transform" />
-                            <div>
-                              <span className="font-extrabold text-slate-900 block group-hover:text-purple-700 transition-colors">
-                                {c.paciente}
-                              </span>
-                              {c.observacoes && (
-                                <span className="text-[11px] text-slate-500 block line-clamp-1 italic">
-                                  {c.observacoes}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </td>
-
-                        <td className="p-4">
-                          <span className="bg-purple-50 text-purple-800 border border-purple-200 px-2.5 py-1 rounded-lg text-xs font-bold inline-flex items-center gap-1">
-                            <Bed className="w-3 h-3 text-purple-600" />
-                            {c.leito}
-                          </span>
-                        </td>
-
-                        <td className="p-4 text-xs font-medium text-slate-600">
-                          {c.responsavel}
-                        </td>
-
-                        <td className="p-4">
-                          {isEditing ? (
-                            <div className="flex items-center gap-1">
-                              <input
-                                type="date"
-                                value={editData}
-                                onChange={(e) => setEditData(e.target.value)}
-                                className="p-1 border border-purple-400 rounded text-xs font-bold outline-none bg-white"
-                              />
-                              <input
-                                type="time"
-                                value={editHorario}
-                                onChange={(e) => setEditHorario(e.target.value)}
-                                className="p-1 border border-purple-400 rounded text-xs font-bold outline-none bg-white"
-                              />
-                              <button
-                                onClick={() => handleSaveEdit(c.id)}
-                                className="p-1 bg-emerald-600 text-white rounded hover:bg-emerald-700"
-                                title="Confirmar novo horário"
-                              >
-                                <Check className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                onClick={() => setEditingId(null)}
-                                className="p-1 bg-slate-200 text-slate-700 rounded hover:bg-slate-300"
-                                title="Cancelar"
-                              >
-                                <X className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-2">
-                              <div>
-                                <span className="font-bold text-slate-800 block text-xs flex items-center gap-1">
-                                  <Calendar className="w-3 h-3 text-purple-600" />
-                                  {c.data}
-                                </span>
-                                <span className="text-[11px] text-purple-900 font-black flex items-center gap-1">
-                                  <Clock className="w-3 h-3 text-purple-600" />
-                                  {c.horario}
-                                </span>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleStartEdit(c);
-                                }}
-                                className="text-slate-400 hover:text-purple-700 p-1 rounded transition-colors opacity-0 group-hover:opacity-100"
-                                title="Reagendar data e horário"
-                              >
-                                <Edit2 className="w-3 h-3" />
-                              </button>
-                            </div>
-                          )}
-                        </td>
-
-                        <td className="p-4">
-                          <span
-                            className={`px-3 py-1 rounded-full text-xs font-black inline-flex items-center gap-1 border ${
-                              c.status === "Realizado"
-                                ? "bg-emerald-50 text-emerald-800 border-emerald-300"
-                                : c.status === "Falha / Re-teste"
-                                ? "bg-amber-50 text-amber-800 border-amber-300"
-                                : c.status === "Ausente"
-                                ? "bg-red-50 text-red-800 border-red-300"
-                                : "bg-purple-50 text-purple-800 border-purple-200"
-                            }`}
-                          >
-                            {c.status === "Realizado" && <CheckCircle2 className="w-3 h-3" />}
-                            {c.status === "Falha / Re-teste" && <AlertTriangle className="w-3 h-3" />}
-                            {c.status}
-                          </span>
-                        </td>
-
-                        <td className="p-4">
-                          {temResultado ? (
-                            <div className="text-xs">
-                              <span className="font-extrabold text-slate-800 block">
-                                {c.resultadoGeral}
-                              </span>
-                              {c.orelhaDireita && c.orelhaEsquerda && (
-                                <span className="text-[10px] text-slate-500 font-medium">
-                                  OD: <strong>{c.orelhaDireita}</strong> | OE: <strong>{c.orelhaEsquerda}</strong>
-                                </span>
-                              )}
-                            </div>
-                          ) : (
-                            <span className="text-xs text-slate-400 italic font-medium">
-                              Aguardando exame
-                            </span>
-                          )}
-                        </td>
-
-                        <td className="p-4 text-center" onClick={(e) => e.stopPropagation()}>
-                          <div className="flex items-center justify-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => abrirModalClinico(c)}
-                              className="bg-purple-700 hover:bg-purple-800 text-white font-bold text-xs px-3.5 py-2 rounded-xl shadow-xs transition-all active:scale-95 flex items-center gap-1.5 cursor-pointer"
-                              title="Abrir prontuário clínico para registrar presença e resultado do exame"
-                            >
-                              <Stethoscope className="w-3.5 h-3.5" />
-                              <span>{temResultado ? "Ver / Editar Exame" : "Registrar Exame"}</span>
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => handleExcluirConsulta(c.id)}
-                              className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
-                              title="Remover agendamento"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        {/* Tabela de Dados Hospitalar (UI/UX Clean) com RBAC e Máscaras Rigorosas */}
+        <OrelhinhaTable
+          perfilProp="fono"
+          onRealizarExameClinico={abrirModalClinico}
+          titulo="Agenda da Triagem Auditiva Neonatal"
+          subtitulo="Hospital Regional Nossa Senhora do Bom Conselho • Controle Clínico Fonoaudiológico"
+        />
       </main>
     </div>
   );
