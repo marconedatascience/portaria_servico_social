@@ -6,7 +6,7 @@ echo    PUBLICACAO NA VERCEL - PORTARIA E SERVICO SOCIAL
 echo    Conta: marconedatascience-2608
 echo ========================================================
 echo.
-cd /d "%~dp0frontend"
+cd /d "%~dp0"
 
 echo [1/2] Autenticando na sua conta Vercel...
 echo       (Se o navegador abrir, confirme a autorizacao na tela)
