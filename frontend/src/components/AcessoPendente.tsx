@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState } from "react";
-import Link from "next/link";
 import { Clock, ShieldX, RefreshCw, LogOut } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { perfilDaSessao, rotaInicialDoPerfil } from "../lib/perfil";

@@ -10,13 +10,17 @@ export const supabase = createBrowserClient(supabaseUrl, supabaseKey);
 
 if (typeof window !== 'undefined') {
   const originalGetSession = supabase.auth.getSession.bind(supabase.auth);
-  (supabase.auth as any).getSession = async () => {
-    try {
-      const mock = window.localStorage.getItem('e2e_session');
-      if (mock) {
-        return { data: { session: JSON.parse(mock) }, error: null };
+  Object.assign(supabase.auth, {
+    getSession: async () => {
+      try {
+        const mock = window.localStorage.getItem('e2e_session');
+        if (mock) {
+          return { data: { session: JSON.parse(mock) }, error: null };
+        }
+      } catch {
+        // Fallback silencioso
       }
-    } catch {}
-    return originalGetSession();
-  };
+      return originalGetSession();
+    },
+  });
 }

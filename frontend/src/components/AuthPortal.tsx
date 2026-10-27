@@ -58,12 +58,6 @@ function AuthPortalContent({ defaultTab = "login" }: { defaultTab?: "login" | "c
   const [authError, setAuthError] = useState("");
 
   useEffect(() => {
-    if (tabParam === "cadastro") {
-      setActiveTab("cadastro");
-    } else if (tabParam === "login") {
-      setActiveTab("login");
-    }
-
     // Limpa credenciais acidentalmente expostas na URL se houve GET submit prévio
     if (typeof window !== "undefined" && (window.location.search.includes("password") || window.location.search.includes("email"))) {
       const qEmail = searchParams.get("email");
@@ -168,7 +162,7 @@ function AuthPortalContent({ defaultTab = "login" }: { defaultTab?: "login" | "c
             setor: cadSetor,
           }),
         });
-      } catch (networkError) {
+      } catch {
         // Fallback para a rota interna Next.js caso o backend direto apresente falha de conexão
         if (baseUrl && endpoint !== "/api/auth/cadastrar") {
           try {
@@ -189,7 +183,7 @@ function AuthPortalContent({ defaultTab = "login" }: { defaultTab?: "login" | "c
         }
       }
 
-      let result: any = null;
+      let result: Record<string, string> | null = null;
       try {
         result = await response.json();
       } catch {
