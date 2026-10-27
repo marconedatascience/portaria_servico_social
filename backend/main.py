@@ -9,7 +9,7 @@ except ImportError:
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routers import pacientes, regras
+from routers import pacientes, regras, auth
 
 app = FastAPI(
     title="CRM Portaria HNSBC API",
@@ -18,22 +18,19 @@ app = FastAPI(
 )
 
 # Configuração de CORS para permitir o frontend Next.js (Inclusão Digital no Tablet)
-# Defina CORS_ORIGINS no .env, separando as URLs por vírgula
-origens_permitidas = [
+origens_env = [
     o.strip()
-    for o in os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
+    for o in os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(",")
     if o.strip()
 ]
-
-headers_permitidos = ["Content-Type", "Authorization"]
-if os.getenv("ALLOW_ROLE_HEADER", "false").lower() == "true":
-    headers_permitidos.append("X-User-Role")  # apenas desenvolvimento
+# Garante que http://localhost:3000 e http://127.0.0.1:3000 sempre estejam nas origens permitidas
+origens_permitidas = list(dict.fromkeys(origens_env + ["http://localhost:3000", "http://127.0.0.1:3000"]))
 
 cors_kwargs = {
     "allow_origins": origens_permitidas,
     "allow_credentials": True,
-    "allow_methods": ["GET", "POST", "PUT", "DELETE"],
-    "allow_headers": headers_permitidos,
+    "allow_methods": ["*"],
+    "allow_headers": ["*"],
 }
 cors_regex = os.getenv("CORS_ORIGIN_REGEX")
 if cors_regex:
@@ -51,3 +48,6 @@ def health_check():
 
 app.include_router(pacientes.router, prefix="/api/v1/pacientes", tags=["pacientes"])
 app.include_router(regras.router, prefix="/api/v1/regras", tags=["regras"])
+app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
+app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
+

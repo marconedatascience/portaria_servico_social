@@ -7,16 +7,21 @@ echo   Repositorio: marconedatascience/portaria_servico_social
 echo ========================================================
 echo.
 cd /d "%~dp0"
-echo 1. Adicionando arquivos alterados e novas stores...
+echo 1. Adicionando arquivos alterados...
 git add .
 echo.
-echo 2. Registrando commit com as refatoracoes...
-git commit -m "refactor(portaria): separa stores Orelhinha/Visitas, persiste visitantes via INSERT/push, adiciona hidratacao F5 e validacoes"
+echo 2. Registrando commit com as alteracoes...
+git diff-index --quiet HEAD --
+if %ERRORLEVEL% neq 0 (
+    git commit -m "fix(auth): conexao api cadastro, CORS backend, tratamento amigavel de erros e correcao de setState"
+) else (
+    echo Nenhum arquivo pendente para commit. Prosseguindo com o envio...
+)
 echo.
 echo 3. Enviando branch main para o GitHub...
 echo (Se pedir autorizacao, clique em autorizar no navegador)
 echo.
-git push -u origin main
+git push origin main
 echo.
 echo ========================================================
 if %ERRORLEVEL% equ 0 (

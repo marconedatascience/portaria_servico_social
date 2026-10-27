@@ -129,7 +129,7 @@ function AuthPortalContent({ defaultTab = "login" }: { defaultTab?: "login" | "c
     }
   };
 
-  // 2. Ação de Cadastro Direta e Segura
+  // 2. Ação de Cadastro Direta e Segura com UX melhorada e tratamento de erro de rede
   const handleCadastro = async (e: React.FormEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -151,27 +151,83 @@ function AuthPortalContent({ defaultTab = "login" }: { defaultTab?: "login" | "c
 
     setIsRegistering(true);
     try {
-      const response = await fetch("/api/auth/cadastrar", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: emailTrim,
-          password: cadPassword,
-          setor: cadSetor,
-        }),
-      });
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "";
+      const endpoint = baseUrl
+        ? `${baseUrl.replace(/\/$/, "")}/api/v1/auth/cadastrar`
+        : "/api/auth/cadastrar";
 
-      const result = await response.json();
-      if (!response.ok) {
-        throw new Error(result.error || "Falha ao solicitar criação da conta.");
+      let response: Response;
+      try {
+        response = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: emailTrim,
+            password: cadPassword,
+            setor: cadSetor,
+          }),
+        });
+      } catch (networkError) {
+        // Fallback para a rota interna Next.js caso o backend direto apresente falha de conexão
+        if (baseUrl && endpoint !== "/api/auth/cadastrar") {
+          try {
+            response = await fetch("/api/auth/cadastrar", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                email: emailTrim,
+                password: cadPassword,
+                setor: cadSetor,
+              }),
+            });
+          } catch {
+            throw new Error("Falha de comunicação com o servidor. Verifique se o serviço está ativo.");
+          }
+        } else {
+          throw new Error("Falha de comunicação com o servidor. Verifique se o serviço está ativo.");
+        }
       }
 
-      setCadastroMsg(result.message || "Conta criada com sucesso! Você já pode fazer login.");
+      let result: any = null;
+      try {
+        result = await response.json();
+      } catch {
+        // Resposta sem corpo JSON legível
+      }
+
+      if (!response.ok) {
+        const errorMsg = result?.detail || result?.error || result?.message || "Falha ao solicitar criação da conta.";
+        if (
+          typeof errorMsg === "string" &&
+          (errorMsg.toLowerCase().includes("fetch failed") || errorMsg.toLowerCase().includes("failed to fetch"))
+        ) {
+          throw new Error("Falha de comunicação com o servidor. Verifique se o serviço está ativo.");
+        }
+        throw new Error(errorMsg);
+      }
+
+      setCadastroMsg(result?.message || "Conta criada com sucesso! Você já pode fazer login.");
       setCadastroSucesso(true);
       setIsRegistering(false);
     } catch (err: unknown) {
       console.error("Erro no cadastro:", err);
-      setAuthError(err instanceof Error ? err.message : "Erro inesperado ao cadastrar.");
+      let mensagemAmigavel = "Erro inesperado ao cadastrar.";
+      if (err instanceof Error) {
+        const msg = err.message.toLowerCase();
+        if (
+          msg.includes("fetch failed") ||
+          msg.includes("failed to fetch") ||
+          msg.includes("networkerror") ||
+          msg.includes("connection refused") ||
+          msg.includes("econnrefused") ||
+          msg.includes("falha de comunicação com o servidor")
+        ) {
+          mensagemAmigavel = "Falha de comunicação com o servidor. Verifique se o serviço está ativo.";
+        } else {
+          mensagemAmigavel = err.message;
+        }
+      }
+      setAuthError(mensagemAmigavel);
       setIsRegistering(false);
     }
   };

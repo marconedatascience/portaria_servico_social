@@ -136,40 +136,28 @@ function DashboardContent() {
     documento?: string;
     telefone?: string;
   }) => {
-    setPacienteFocado((prev) => {
-      if (!prev) return null;
-      if (dados.tipo === 'acompanhante') {
-        return {
-          ...prev,
-          acompanhante_nome: dados.nome,
-          acompanhante_documento: dados.documento || null,
-          acompanhante_telefone: dados.telefone || null,
-          acompanhante: {
-            nome: dados.nome,
-            documento: dados.documento || null,
-            telefone: dados.telefone || null,
-          },
-        };
-      } else if (dados.tipo === 'visitante') {
-        const novoVis: Visitante = {
-          id: Date.now() + Math.floor(Math.random() * 1000),
-          nome: dados.nome,
-          documento: dados.documento || null,
-          telefone: dados.telefone || null,
-          data_entrada: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-          status: 'ATIVO',
-          isProcedimento: false,
-          tipoAcesso: 'VISITANTE',
-        };
+    if (dados.tipo === 'visitante' && pacienteFocado) {
+      const novoVis: Visitante = {
+        id: Date.now() + Math.floor(Math.random() * 1000),
+        nome: dados.nome,
+        documento: dados.documento || null,
+        telefone: dados.telefone || null,
+        data_entrada: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+        status: 'ATIVO',
+        isProcedimento: false,
+        tipoAcesso: 'VISITANTE',
+      };
+      // Atualiza a store fora do render/updater do setState
+      adicionarVisitanteNaStore(pacienteFocado.id, novoVis);
+
+      setPacienteFocado((prev) => {
+        if (!prev) return null;
         const listaAnterior: Visitante[] = Array.isArray(prev.visitantes)
           ? prev.visitantes
           : (prev.visitante ? [prev.visitante] : (prev.visitante_ativo ? [{ id: prev.id * 1000 + 1, nome: prev.visitante_ativo, documento: prev.visitante_documento, telefone: prev.visitante_telefone }] : []));
         const novosVisitantes = [...listaAnterior, novoVis];
         const visitantesSociais = novosVisitantes.filter(v => !v.isProcedimento && v.tipoAcesso !== 'ORELHINHA');
         const novasCotas = (prev.cotas_usadas ?? 0) + 1;
-
-        // Atualiza a store de Visitas
-        adicionarVisitanteNaStore(prev.id, novoVis);
 
         return {
           ...prev,
@@ -181,40 +169,54 @@ function DashboardContent() {
           cotas_usadas: novasCotas,
           placar: `Visitantes: ${novasCotas}/${prev.cota_maxima ?? 2}`,
         };
-      } else if (dados.tipo === 'orelhinha') {
-        // Procedimento clínico não consome cota diária de visitas sociais e é gerenciado pela store da Orelhinha
-        const novoProc: Visitante = {
-          id: Date.now() + Math.floor(Math.random() * 1000),
-          nome: dados.nome,
-          documento: dados.documento || null,
-          telefone: dados.telefone || null,
-          data_entrada: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-          status: 'ATIVO',
-          isProcedimento: true,
-          tipoAcesso: 'ORELHINHA',
-        };
+      });
+    } else if (dados.tipo === 'orelhinha' && pacienteFocado) {
+      // Dispara ação isolada na store da Orelhinha fora do updater do setState
+      adicionarConsultaOrelhinha({
+        paciente: pacienteFocado.usuario_nome,
+        leito: pacienteFocado.leito,
+        responsavel: dados.nome,
+        data: new Date().toISOString().split("T")[0],
+        horario: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+        status: "Agendado",
+        presenca: "Presente",
+      });
 
-        // Dispara ação isolada na store da Orelhinha (NÃO incrementa contador de visitantes)
-        adicionarConsultaOrelhinha({
-          paciente: prev.usuario_nome,
-          leito: prev.leito,
-          responsavel: dados.nome,
-          data: new Date().toISOString().split("T")[0],
-          horario: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-          status: "Agendado",
-          presenca: "Presente",
-        });
+      const novoProc: Visitante = {
+        id: Date.now() + Math.floor(Math.random() * 1000),
+        nome: dados.nome,
+        documento: dados.documento || null,
+        telefone: dados.telefone || null,
+        data_entrada: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+        status: 'ATIVO',
+        isProcedimento: true,
+        tipoAcesso: 'ORELHINHA',
+      };
 
+      setPacienteFocado((prev) => {
+        if (!prev) return null;
         const listaProcedimentos: Visitante[] = Array.isArray(prev.procedimentos_ativos) ? prev.procedimentos_ativos : [];
-
-        // Retorna paciente sem alterar cotas_usadas ou placar de visitas
         return {
           ...prev,
           procedimentos_ativos: [...listaProcedimentos, novoProc],
         };
-      }
-      return prev;
-    });
+      });
+    } else if (dados.tipo === 'acompanhante') {
+      setPacienteFocado((prev) => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          acompanhante_nome: dados.nome,
+          acompanhante_documento: dados.documento || null,
+          acompanhante_telefone: dados.telefone || null,
+          acompanhante: {
+            nome: dados.nome,
+            documento: dados.documento || null,
+            telefone: dados.telefone || null,
+          },
+        };
+      });
+    }
 
     queryClient.invalidateQueries({ queryKey: ["pacientes"] });
   };

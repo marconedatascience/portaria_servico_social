@@ -37,8 +37,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         return;
       }
       const permitidos = Object.entries(PERMISSOES).find(([rota]) => pathname.startsWith(rota))?.[1];
-      // Rota /dashboard sem regra explícita: nega por padrão.
-      setEstado(permitidos?.includes(perfil) ? "ok" : "negado");
+      // Rota /dashboard sem regra explícita: nega por padrão. Admin possui acesso universal.
+      setEstado(perfil === "admin" || (permitidos?.includes(perfil) ?? false) ? "ok" : "negado");
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {

@@ -61,11 +61,28 @@ export async function POST(request: Request) {
     );
   }
 
-  const supabaseAdmin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-
   try {
+    // 0. Tenta primeiro o endpoint de cadastro no backend FastAPI local se estiver configurado
+    const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+    try {
+      const respBackend = await fetch(`${backendUrl.replace(/\/$/, '')}/api/v1/auth/cadastrar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: emailNormalizado, password: senha, setor: setorEscolhido }),
+        signal: AbortSignal.timeout(3000),
+      });
+      if (respBackend.ok) {
+        const dados = await respBackend.json();
+        return NextResponse.json(dados);
+      }
+    } catch {
+      // Backend local offline ou rota não atingida, segue fluxo do Supabase
+    }
+
+    const supabaseAdmin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+
     // 1. Verificar se a conta já existe para atualizar senha/perfil sem travar o operador
     const { data: userList } = await supabaseAdmin.auth.admin.listUsers();
     const usuarioExistente = userList?.users?.find(
@@ -114,8 +131,11 @@ export async function POST(request: Request) {
       message: `Conta criada com sucesso com perfil ${setorEscolhido.toUpperCase()}! Você já pode fazer login.`,
     });
   } catch (err: unknown) {
-    const msg = (err as Error)?.message || 'Erro inesperado no servidor de autenticação.';
-    console.error('Exceção ao cadastrar:', msg);
+    const rawMsg = (err as Error)?.message || '';
+    console.error('Exceção ao cadastrar:', rawMsg);
+    const msg = rawMsg.toLowerCase().includes('fetch failed') || rawMsg.toLowerCase().includes('failed to fetch')
+      ? 'Falha de comunicação com o servidor. Verifique se o serviço está ativo.'
+      : (rawMsg || 'Erro inesperado no servidor de autenticação.');
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
