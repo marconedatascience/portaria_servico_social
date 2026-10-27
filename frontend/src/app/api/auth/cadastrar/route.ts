@@ -97,6 +97,11 @@ export async function POST(request: Request) {
           role: setorEscolhido,
           setor: setorEscolhido,
         },
+        user_metadata: {
+          ...(usuarioExistente.user_metadata || {}),
+          role: setorEscolhido,
+          setor: setorEscolhido,
+        },
       });
 
       if (updateError) {
@@ -116,6 +121,10 @@ export async function POST(request: Request) {
       password: senha,
       email_confirm: true,
       app_metadata: {
+        role: setorEscolhido,
+        setor: setorEscolhido,
+      },
+      user_metadata: {
         role: setorEscolhido,
         setor: setorEscolhido,
       },

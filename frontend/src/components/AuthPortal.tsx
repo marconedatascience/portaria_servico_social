@@ -4,7 +4,7 @@ import React, { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { supabase } from "../lib/supabase";
 import { traduzirErroAuth } from "../lib/authErrors";
-import { perfilDaSessao } from "../lib/perfil";
+import { perfilDaSessao, rotaInicialDoPerfil } from "../lib/perfil";
 import { 
   Eye, 
   EyeOff, 
@@ -112,13 +112,14 @@ function AuthPortalContent({ defaultTab = "login" }: { defaultTab?: "login" | "c
         return;
       }
 
+      if (typeof window !== "undefined") {
+        window.localStorage.removeItem("e2e_session");
+      }
+
       if (data?.session) {
         const perfil = perfilDaSessao(data.session);
-        if (perfil === "fono") {
-          window.location.replace("/dashboard/fono");
-        } else {
-          window.location.replace("/");
-        }
+        const rotaDestino = perfil ? rotaInicialDoPerfil(perfil) : "/";
+        window.location.replace(rotaDestino);
       } else {
         window.location.replace("/");
       }

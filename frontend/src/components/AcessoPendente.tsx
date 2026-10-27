@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { Clock, ShieldX, RefreshCw, LogOut } from "lucide-react";
 import { supabase } from "../lib/supabase";
+import { perfilDaSessao, rotaInicialDoPerfil } from "../lib/perfil";
 
 interface AcessoPendenteProps {
   /** "pendente": conta sem setor aprovado. "negado": setor aprovado, mas sem acesso a esta tela. */
@@ -74,12 +75,18 @@ export default function AcessoPendente({ motivo, email }: AcessoPendenteProps) {
               {verificando ? "Verificando..." : "Já fui aprovado — verificar novamente"}
             </button>
           ) : (
-            <Link
-              href="/"
-              className="block w-full bg-primary-blue hover:bg-blue-800 text-white font-bold py-3.5 rounded-xl shadow-lg transition-all"
+            <button
+              type="button"
+              onClick={async () => {
+                const { data: { session } } = await supabase.auth.getSession();
+                const perfil = perfilDaSessao(session);
+                const destino = perfil ? rotaInicialDoPerfil(perfil) : "/";
+                window.location.replace(destino);
+              }}
+              className="block w-full bg-primary-blue hover:bg-blue-800 text-white font-bold py-3.5 rounded-xl shadow-lg transition-all cursor-pointer"
             >
-              Ir para a minha tela inicial
-            </Link>
+              Ir para o painel do meu setor
+            </button>
           )}
 
           <button

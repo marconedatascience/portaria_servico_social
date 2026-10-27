@@ -242,9 +242,12 @@ function DashboardContent() {
           setAguardandoAprovacao(true);
           return;
         }
-        if (rotaInicialDoPerfil(perfil) !== "/") {
+        if (rotaInicialDoPerfil(perfil) !== "/" && !rotaInicialDoPerfil(perfil).startsWith("/?")) {
           window.location.replace(rotaInicialDoPerfil(perfil));
           return;
+        }
+        if (perfil === "servico_social") {
+          setAbaAtiva("servico_social");
         }
         setAutenticado(true);
       } catch (err) {

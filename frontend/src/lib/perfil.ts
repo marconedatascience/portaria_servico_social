@@ -34,5 +34,17 @@ export function perfilDaSessao(session: Session | null): Perfil | null {
 
 /** Página inicial de cada setor após o login. */
 export function rotaInicialDoPerfil(perfil: Perfil): string {
-  return perfil === 'fono' ? '/dashboard/fono' : '/';
+  switch (perfil) {
+    case 'portaria':
+      return '/dashboard/portaria';
+    case 'fono':
+      return '/dashboard/fono';
+    case 'servico_social':
+      return '/'; // Painel Geral com foco em Serviço Social & Visitas
+    case 'admin':
+      return '/';
+    default:
+      return '/';
+  }
 }
+

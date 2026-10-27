@@ -3,13 +3,13 @@
 import React, { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { supabase } from "../../lib/supabase";
-import { perfilDaSessao, type Perfil } from "../../lib/perfil";
+import { perfilDaSessao, rotaInicialDoPerfil, type Perfil } from "../../lib/perfil";
 import AcessoPendente from "../../components/AcessoPendente";
 
 // Setores que podem abrir cada painel.
 const PERMISSOES: Record<string, readonly Perfil[]> = {
-  "/dashboard/portaria": ["portaria", "servico_social"],
-  "/dashboard/fono": ["fono"],
+  "/dashboard/portaria": ["portaria", "servico_social", "admin"],
+  "/dashboard/fono": ["fono", "admin"],
 };
 
 type Estado = "verificando" | "ok" | "pendente" | "negado";
@@ -36,9 +36,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         setEstado("pendente");
         return;
       }
+
+      // Se acessar a raiz /dashboard ou /dashboard/, redireciona automaticamente para o painel correto do setor
+      if (pathname === "/dashboard" || pathname === "/dashboard/") {
+        const destino = rotaInicialDoPerfil(perfil);
+        window.location.replace(destino);
+        return;
+      }
+
       const permitidos = Object.entries(PERMISSOES).find(([rota]) => pathname.startsWith(rota))?.[1];
-      // Rota /dashboard sem regra explícita: nega por padrão. Admin possui acesso universal.
-      setEstado(perfil === "admin" || (permitidos?.includes(perfil) ?? false) ? "ok" : "negado");
+      // Admin possui acesso universal. Demais perfis respeitam PERMISSOES
+      const temPermissao = perfil === "admin" || (permitidos?.includes(perfil) ?? false);
+      setEstado(temPermissao ? "ok" : "negado");
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
